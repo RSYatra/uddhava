@@ -1,0 +1,20 @@
+# Production dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy>=2.0.30
+python-multipart==0.0.6
+pydantic[email]>=2.8.0
+pymysql==1.1.0
+python-dotenv==1.0.0
+
+# Development dependencies (install only for development)
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.1
+bandit>=1.7.5
+pytest>=7.4.3
+pytest-cov>=4.1.0
+pre-commit>=3.5.0
+pip-audit>=2.6.1
+packaging>=23.0.0
