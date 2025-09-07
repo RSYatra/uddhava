@@ -1,0 +1,57 @@
+repos:
+  # Code formatting
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language_version: python3.13
+
+  # Import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # Linting
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        args: ["--max-line-length=88", "--extend-ignore=E203,W503"]
+
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: ["--skip", "B101"]
+        exclude: ^venv/
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-case-conflict
+
+  # Environment file protection
+  - repo: local
+    hooks:
+      - id: check-credentials
+        name: Check for credentials in code
+        entry: bash -c 'if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env" | grep -v "default_password"; then echo "Found hardcoded passwords!"; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      - id: check-env-files
+        name: Ensure .env files are not committed
+        entry: bash -c 'if git ls-files | grep -q "^\.env$"; then echo ".env files should not be committed!"; exit 1; fi'
+        language: system
+        pass_filenames: false
