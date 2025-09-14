@@ -8,6 +8,8 @@ pydantic[email]==2.9.2
 pymysql==1.1.1
 python-dotenv==1.0.1
 alembic==1.13.2
+itsdangerous==2.2.0
+python-json-logger==2.0.7
 
 # Authentication dependencies
 passlib[bcrypt]==1.7.4
