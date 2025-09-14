@@ -92,9 +92,12 @@ def create_application() -> FastAPI:
         FastAPI: Configured FastAPI application instance
     """
     app = FastAPI(
-        title=settings.app_name,
+        title="Radha Shyam Sundar Yatra - Uddhava API Endpoints",
         version=settings.app_version,
-        description="Production-grade FastAPI application with authentication",
+        description=(
+            "An application dedicated to managing and supporting "
+            "the Radha Shyam Sundar Yatra."
+        ),
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
         openapi_url="/openapi.json" if not settings.is_production else None,
