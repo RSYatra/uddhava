@@ -106,7 +106,7 @@ def create_user(
     - **name**: User's full name (required)
     - **email**: Valid email address (required, must be unique)
     - **password**: Password with minimum 8 characters (required)
-    - **chanting_rounds**: Daily chanting rounds 0-200 (required)
+    - **chanting_rounds**: Daily chanting rounds 0-200 (optional, default 16)
     - **photo**: Optional profile photo file
     """
     try:
