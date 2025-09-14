@@ -9,41 +9,26 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file (for local development)
 try:
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv  # type: ignore
 
     load_dotenv()
-except ImportError:
-    pass  # dotenv not installed, skip loading .env file
+except ImportError:  # pragma: no cover - optional dependency
+    pass
 
-# Try to import credentials as fallback for local development
-try:
-    import credentials
-
-    default_host = credentials.DB_HOST
-    default_port = credentials.DB_PORT
-    default_user = credentials.DB_USER
-    default_password = credentials.DB_PASSWORD
-    default_name = getattr(credentials, "DB_NAME", "uddhava_db")
-    logger.info("Using credentials.py for database configuration")
-except ImportError:
-    # Fallback defaults when credentials.py doesn't exist (production)
-    default_host = "localhost"
-    default_port = 3306
-    default_user = "root"
-    default_password = ""  # nosec B105 - Empty password for local dev only
-    default_name = "uddhava_db"
-    logger.info("Using environment variables for database configuration")
-
-# Environment variables take priority over credentials.py
-DB_HOST = os.getenv("DB_HOST", default_host)
-DB_PORT = int(os.getenv("DB_PORT", str(default_port)))
-DB_USER = os.getenv("DB_USER", default_user)
-DB_PASSWORD = os.getenv("DB_PASSWORD", default_password)
-DB_NAME = os.getenv("DB_NAME", default_name)
+# Direct environment-based configuration (credentials.py removed)
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = int(os.getenv("DB_PORT", "3306"))
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")  # nosec B105 - local dev default
+DB_NAME = os.getenv("DB_NAME", "uddhava_db")
 
 # Validate required configuration
-if not all([DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
+if not all([DB_HOST, DB_USER, DB_NAME]) or DB_PASSWORD is None:
     raise ValueError("Missing required database configuration")
+
+# Additional validation for production safety
+if not DB_HOST or not DB_USER or not DB_NAME:
+    raise ValueError("Database configuration values cannot be empty")
 
 # URL encode the password to handle special characters
 encoded_password = quote_plus(str(DB_PASSWORD))

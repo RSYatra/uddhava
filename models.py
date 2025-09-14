@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Column, DateTime, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy import Column, DateTime, Integer, String, event
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -21,6 +21,19 @@ class User(Base):
     photo = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# --- Email normalization events ---
+@event.listens_for(User, "before_insert")
+def normalize_email_before_insert(mapper, connection, target):  # type: ignore
+    if target.email:
+        target.email = target.email.strip().lower()
+
+
+@event.listens_for(User, "before_update")
+def normalize_email_before_update(mapper, connection, target):  # type: ignore
+    if target.email:
+        target.email = target.email.strip().lower()
 
 
 class UserCreate(BaseModel):
@@ -42,5 +55,4 @@ class UserOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

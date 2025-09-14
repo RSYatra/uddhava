@@ -144,8 +144,25 @@ ENV/
 env.bak/
 venv.bak/
 
-# Credentials and sensitive files
+#############################################
+# Core Sensitive / Secrets
+#############################################
 credentials.py
+.env
+.env.*.local
+*.secret
+*.secrets.json
+
+# Explicitly keep Alembic migration scripts
+!alembic/versions/*.py
+
+# PID / runtime markers
+server.pid
+
+# Local logs
+logs/
+*.log
+*.log.*
 
 # OS-specific files
 .DS_Store
@@ -157,10 +174,12 @@ ehthumbs.db
 Thumbs.db
 Desktop.ini
 
-# FastAPI/Web specific
-static/
+# FastAPI / Web uploads (keep directory via .gitkeep)
+static/*
+!static/.gitkeep
 uploads/
 temp/
+tmp/
 
 # Database files
 *.db
