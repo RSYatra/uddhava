@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+# Treat migration scripts and shell scripts as text explicitly
+*.sh text eol=lf
+alembic/versions/*.py linguist-generated=false
+
+# Force images as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
