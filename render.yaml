@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: uddhava-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: uddhava-api
+          property: port
+      # Add your database environment variables here:
+      # - key: DB_HOST
+      #   value: your-db-host
+      # - key: DB_USER
+      #   value: your-db-user
+      # - key: DB_PASSWORD
+      #   sync: false  # Mark as secret
+      # - key: DB_NAME
+      #   value: your-db-name
