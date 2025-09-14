@@ -93,7 +93,7 @@ def create_user(
     name: str = Form(..., min_length=1, max_length=255),
     email: str = Form(..., max_length=255),
     password: str = Form(..., min_length=8, max_length=128),
-    chanting_rounds: int = Form(..., ge=0, le=1000),
+    chanting_rounds: int = Form(..., ge=0, le=200),
     photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     # current_user: User = Depends(get_current_user)  # Will add this later
@@ -106,7 +106,7 @@ def create_user(
     - **name**: User's full name (required)
     - **email**: Valid email address (required, must be unique)
     - **password**: Password with minimum 8 characters (required)
-    - **chanting_rounds**: Daily chanting rounds 0-1000 (required)
+    - **chanting_rounds**: Daily chanting rounds 0-200 (required)
     - **photo**: Optional profile photo file
     """
     try:

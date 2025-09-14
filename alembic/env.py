@@ -18,11 +18,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from database import DATABASE_URL  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
 
 # --- Dynamic database URL resolution ---
 # We import SQLAlchemy models metadata so autogenerate can detect changes.
-from models import Base  # noqa: E402
+from app.db.models import Base  # noqa: E402
+
+settings = get_settings()
+DATABASE_URL = settings.database_url
 
 target_metadata = Base.metadata
 

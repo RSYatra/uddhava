@@ -53,7 +53,7 @@ def signup(user_data: UserSignup, db: Session = Depends(get_db)):
     - **name**: User's full name (required)
     - **email**: Valid email address (required, must be unique)
     - **password**: Password with minimum 8 characters (required)
-    - **chanting_rounds**: Daily chanting rounds 0-1000 (required)
+    - **chanting_rounds**: Daily chanting rounds 0-200 (required)
 
     Returns a JWT access token for immediate authentication.
     """

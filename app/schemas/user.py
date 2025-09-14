@@ -16,8 +16,11 @@ class UserBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="User's full name")
     email: EmailStr = Field(..., description="User's email address")
-    chanting_rounds: int = Field(
-        ..., ge=0, le=1000, description="Daily chanting rounds"
+    chanting_rounds: Optional[int] = Field(
+        default=16,
+        ge=0,
+        le=200,
+        description="Daily chanting rounds (default: 16, optional)",
     )
 
 
@@ -51,7 +54,7 @@ class UserUpdate(BaseModel):
     """Schema for updating user information."""
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    chanting_rounds: Optional[int] = Field(None, ge=0, le=1000)
+    chanting_rounds: Optional[int] = Field(None, ge=0, le=200)
 
 
 class UserOut(UserBase):
