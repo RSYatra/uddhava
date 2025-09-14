@@ -127,8 +127,11 @@ fi
 
 # Pre-flight: basic database connectivity (skip if FAST=1 or after failed migration)
 if [[ "${SKIP_DB_CHECK:-0}" != "1" && $FAST -ne 1 ]]; then
-    python - <<'PY' || warn "Database pre-check failed (continuing)."
-from database import engine
+    [[ $QUIET -eq 1 ]] || log "Checking database connectivity..."
+    if python - <<'PY' 2>/dev/null
+import os
+os.environ['SKIP_DB_INIT'] = '1'  # Prevent table creation during check
+from app.db.session import engine
 from sqlalchemy import text
 try:
         with engine.connect() as conn:
@@ -136,8 +139,15 @@ try:
         print("DB connectivity: OK")
 except Exception as e:
         print(f"DB connectivity check failed: {e}")
-        raise SystemExit(1)
+        exit(1)
 PY
+    then
+        [[ $QUIET -eq 1 ]] || log "Database connectivity verified"
+    else
+        warn "Database connectivity failed - server will start without database features"
+        warn "Database-dependent endpoints will return appropriate error responses"
+        export SKIP_DB_INIT=1
+    fi
 fi
 
 # PID file safety
@@ -167,11 +177,14 @@ set -e
 echo $UV_PID > "$PIDFILE"
 [[ $QUIET -eq 1 ]] || log "Server PID $UV_PID (pidfile: $PIDFILE)"
 
-# Health wait (quick passive readiness)
+# Health wait (quick passive readiness) - use liveness check which doesn't require DB
 if [[ ${WAIT_FOR_READY:-1} -eq 1 ]]; then
+    [[ $QUIET -eq 1 ]] || log "Waiting for server to be ready..."
     for i in {1..20}; do
-        if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
-            [[ $QUIET -eq 1 ]] || log "Ready (health endpoint responded)"
+        # Try liveness endpoint first (doesn't require DB), fallback to root
+        if curl -fsS "http://127.0.0.1:$PORT/api/v1/health/live" >/dev/null 2>&1 || \
+           curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
+            [[ $QUIET -eq 1 ]] || log "Server ready (health endpoint responded)"
             break
         fi
         sleep 0.2

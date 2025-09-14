@@ -1,6 +1,77 @@
 # Uddhava API
 
-A production-ready FastAPI application for #### Using Render
+A production-ready FastAPI application with enterprise-grade features including structured logging, monitoring, performance optimization, and comprehensive validation.
+
+## 🚀 Production Features
+
+- **Structured Logging**: JSON formatted logs with rotation and performance timing
+- **Database Reliability**: Connection pooling, automatic retries, and health monitoring
+- **Input Validation**: Comprehensive sanitization and security validation
+- **Monitoring & Metrics**: Health checks, performance tracking, and system metrics
+- **Performance Optimization**: Async utilities, intelligent caching, and batch processing
+- **Clean Architecture**: Service layer patterns and dependency management
+
+> **For deployment:** See [PRODUCTION.md](PRODUCTION.md) for complete production deployment guide.
+
+## Features
+
+- User CRUD operations with advanced validation
+- Photo upload with security validation
+- Email validation and normalization
+- Advanced database connection pooling with retry logic
+- Comprehensive health monitoring with metrics endpoint
+- Structured logging with JSON formatting and rotation
+- Performance optimization with caching and async utilities
+- Production-ready configuration management
+- Startup automation script (`start.sh`) with health probe & port conflict handling
+- Alembic migrations for schema management
+- Diagnostic endpoints with monitoring capabilities
+- Graceful error handling with structured responses
+
+## Quick Start
+
+### Local Development
+
+1. **Clone and setup**
+   ```bash
+   git clone <repository-url>
+   cd uddhava
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your database credentials
+   export JWT_SECRET_KEY=$(openssl rand -hex 32)  # Generate secure JWT key
+   ```
+
+4. **Run the server**
+   ```bash
+   uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+5. **Alternative (recommended) launcher**
+   ```bash
+   ./start.sh --fast
+   ```
+   Flags:
+   - `--fast` skips optional delays
+   - `--kill` auto-kills existing process on the same port
+   - `--reload` enables auto-reload (development only)
+   - `--quiet` minimal logging during startup
+
+### Production Deployment
+
+See [PRODUCTION.md](PRODUCTION.md) for comprehensive production deployment guide.
+
+#### Quick Deploy
 
 **Option 1: Using render.yaml (Infrastructure as Code)**
 1. Connect your GitHub repo to Render
@@ -126,14 +197,28 @@ CMD ["./start.sh"]
 
 ## API Endpoints
 
-- `GET /` - API information
-- `GET /health` - Health check
-- `GET /users` - List users (with pagination)
-- `POST /users` - Create user
+### Core Endpoints
+- `GET /` - API information and status
+- `GET /health` - Basic health check
+- `GET /metrics` - **NEW**: Comprehensive application metrics and monitoring
+- `GET /docs` - Interactive API documentation (development only)
+
+### User Management
+- `GET /users` - List users (with advanced pagination and filtering)
+- `POST /users` - Create user (with enhanced validation)
 - `GET /users/{id}` - Get specific user
+- `PUT /users/{id}` - Update user information
+- `DELETE /users/{id}` - Delete user
 - `GET /users/{id}/photo` - Get user photo
-- `GET /docs` - API documentation (development only)
-- `GET /debug/db` - DB diagnostics (requires `DEBUG_DB_TOKEN` if set)
+- `POST /users/{id}/photo` - Upload user photo (with security validation)
+
+### Authentication
+- `POST /auth/login` - User authentication
+- `POST /auth/logout` - User logout
+- `GET /auth/me` - Get current user profile
+
+### Diagnostics
+- `GET /debug/db` - Database diagnostics (requires `DEBUG_DB_TOKEN` if set)
 
 ## Development
 
@@ -201,8 +286,7 @@ Previously committed database credentials should be considered compromised—rot
 
 Checklist before pushing a PR:
 1. `git diff --name-only origin/main` shows no secrets or `.env` file
-2. `credentials.py` contains only placeholders
-3. No personal images or PII in `static/` (directory is ignored; safe to clear locally)
+2. No personal images or PII in uploads (static/ directory auto-created and git-ignored)
 4. Logs do not include sensitive data (emails are acceptable if business-approved)
 
 ## Diagnostics & Health

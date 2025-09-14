@@ -12,12 +12,3 @@ services:
           type: web
           name: uddhava-api
           property: port
-      # Add your database environment variables here:
-      # - key: DB_HOST
-      #   value: your-db-host
-      # - key: DB_USER
-      #   value: your-db-user
-      # - key: DB_PASSWORD
-      #   sync: false  # Mark as secret
-      # - key: DB_NAME
-      #   value: your-db-name

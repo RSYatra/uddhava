@@ -9,6 +9,11 @@ pymysql==1.1.1
 python-dotenv==1.0.1
 alembic==1.13.2
 
+# Authentication dependencies
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1  # Fixed version for passlib compatibility
+
 # Development dependencies (install only for development)
 black>=23.11.0
 isort>=5.12.0
