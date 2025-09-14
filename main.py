@@ -315,15 +315,52 @@ def register_routes(app: FastAPI) -> None:
     # User routes (authentication required)
     app.include_router(users.router, prefix="/api/v1")
 
-    # Root endpoint
-    @app.get("/", tags=["Root"])
-    async def root():
-        """Root endpoint with basic application information."""
+    # Root endpoint - Landing page
+    @app.get("/", tags=["Root"], include_in_schema=False)
+    async def root(request: Request):
+        """
+        Landing page with API information and navigation.
+
+        Serves as the main entry point for the Uddhava API,
+        providing navigation and basic service information.
+        """
+        import os
+
+        from fastapi.templating import Jinja2Templates
+
+        # Setup templates
+        template_dir = os.path.join(os.path.dirname(__file__), "templates")
+        templates = Jinja2Templates(directory=template_dir)
+
+        # Render template with context
+        template_context = {
+            "request": request,
+            "app_name": settings.app_name,
+            "version": settings.app_version,
+            "environment": settings.environment.title(),
+            "description": "Radha Shyam Sundar Yatra Management System",
+            "show_docs": not settings.is_production,
+        }
+
+        return templates.TemplateResponse("index.html", template_context)
+
+    # API info endpoint (JSON format for programmatic access)
+    @app.get("/api/info", tags=["Root"])
+    async def api_info():
+        """Get API information in JSON format for programmatic access."""
         return {
             "name": settings.app_name,
             "version": settings.app_version,
             "environment": settings.environment,
             "status": "running",
+            "description": "Radha Shyam Sundar Yatra Management API",
+            "endpoints": {
+                "health": "/api/v1/health",
+                "auth": "/api/v1/auth/",
+                "users": "/api/v1/users/",
+                "docs": "/docs" if not settings.is_production else None,
+                "redoc": "/redoc" if not settings.is_production else None,
+            },
         }
 
 
