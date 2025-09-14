@@ -1,0 +1,10 @@
+"""
+API routes package initialization.
+
+This package contains all API route modules organized by functionality.
+"""
+
+# Import all route modules for easy access
+from . import auth, health, users
+
+__all__ = ["auth", "health", "users"]

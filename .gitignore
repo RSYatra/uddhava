@@ -175,8 +175,7 @@ Thumbs.db
 Desktop.ini
 
 # FastAPI / Web uploads (keep directory via .gitkeep)
-static/*
-!static/.gitkeep
+static/
 uploads/
 temp/
 tmp/
