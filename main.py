@@ -78,6 +78,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.info("Database configuration loaded")
 
+    # Check for admin user existence
+    try:
+        from app.utils.admin_utils import ensure_admin_exists
+
+        if ensure_admin_exists():
+            logger.info("Admin user verification completed")
+        else:
+            logger.warning(
+                "No admin users found. Create one using: "
+                "promote_user_to_admin() or create_admin_user()"
+            )
+    except Exception as e:
+        logger.warning(f"Admin user check failed: {e}")
+
     yield
 
     # Shutdown

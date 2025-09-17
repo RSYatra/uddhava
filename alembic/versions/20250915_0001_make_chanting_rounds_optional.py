@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20250915_0001"
-down_revision = "20250914_2344"
+down_revision = "20250914_2344_add_password_hash"
 branch_labels = None
 depends_on = None
 
