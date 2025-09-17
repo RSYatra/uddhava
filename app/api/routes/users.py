@@ -25,8 +25,12 @@ from pydantic import EmailStr, ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.auth_decorators import (
+    admin_only_endpoint,
+    owner_or_admin_endpoint,
+)
 from app.core.config import settings
-from app.core.security import get_password_hash
+from app.core.security import get_current_user, get_password_hash
 from app.db.models import User
 from app.db.session import SessionLocal
 from app.schemas.user import UserOut, UserUpdate
@@ -61,24 +65,27 @@ def get_db():
         db.close()
 
 
-@router.get("/", response_model=List[UserOut], summary="List Users")
-def get_users(
+@router.get("/", response_model=List[UserOut], summary="List Users (Admin Only)")
+@admin_only_endpoint
+async def get_users(
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db),
-    # current_user: User = Depends(get_current_user)  # Will add this later
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Retrieve a list of users with pagination.
+    Retrieve a list of users with pagination (Admin only).
 
     - **limit**: Maximum number of users to return (default: 100)
     - **offset**: Number of users to skip (default: 0)
 
     Returns a list of user objects with public information only.
+
+    SECURITY: This endpoint requires admin authentication.
     """
     try:
         users = db.query(User).offset(offset).limit(limit).all()
-        logger.info(f"Retrieved {len(users)} users")
+        logger.info(f"Admin {current_user.email} retrieved {len(users)} users")
         return users
     except SQLAlchemyError:
         logger.exception("Error retrieving users")
@@ -89,14 +96,15 @@ def get_users(
 
 
 @router.post("/", response_model=UserOut, summary="Create User (Admin)")
-def create_user(
+@admin_only_endpoint
+async def create_user(
     name: str = Form(..., min_length=1, max_length=255),
     email: str = Form(..., max_length=255),
     password: str = Form(..., min_length=8, max_length=128),
     chanting_rounds: int = Form(..., ge=0, le=200),
     photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    # current_user: User = Depends(get_current_user)  # Will add this later
+    current_user: User = Depends(get_current_user),
 ):
     """
     Create a new user with optional photo upload (Admin endpoint).
@@ -108,8 +116,14 @@ def create_user(
     - **password**: Password with minimum 8 characters (required)
     - **chanting_rounds**: Daily chanting rounds 0-200 (optional, default 16)
     - **photo**: Optional profile photo file
+
+    SECURITY: This endpoint requires authentication. Currently limited to
+    authenticated users, but should be restricted to admin users only
+    when role system is implemented.
     """
     try:
+        logger.info(f"Admin {current_user.email} creating new user: {email}")
+
         # Validate email format using Pydantic model
         from pydantic import BaseModel
 
@@ -222,10 +236,11 @@ def create_user(
 
 
 @router.get("/{user_id}", response_model=UserOut, summary="Get User by ID")
-def get_user(
+@owner_or_admin_endpoint("user_id")
+async def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    # current_user: User = Depends(get_current_user)  # Will add this later
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieve a specific user by ID.
@@ -233,6 +248,7 @@ def get_user(
     - **user_id**: The ID of the user to retrieve
 
     Returns the user object with public information.
+    Users can only access their own profile, admins can access any profile.
     """
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -240,6 +256,8 @@ def get_user(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
             )
+
+        logger.info(f"User {current_user.email} accessed profile of user {user_id}")
         return user
     except HTTPException:
         raise
@@ -252,11 +270,12 @@ def get_user(
 
 
 @router.put("/{user_id}", response_model=UserOut, summary="Update User")
-def update_user(
+@owner_or_admin_endpoint("user_id")
+async def update_user(
     user_id: int,
     user_update: UserUpdate,
     db: Session = Depends(get_db),
-    # current_user: User = Depends(get_current_user)  # Will add this later
+    current_user: User = Depends(get_current_user),
 ):
     """
     Update a user's information.
@@ -265,6 +284,7 @@ def update_user(
     - **user_update**: Updated user information
 
     Returns the updated user object.
+    Users can only update their own profile, admins can update any profile.
     """
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -282,7 +302,7 @@ def update_user(
         db.commit()
         db.refresh(user)
 
-        logger.info(f"User updated: {user.email}")
+        logger.info(f"User {current_user.email} updated user {user.email}")
         return user
 
     except HTTPException:
@@ -296,13 +316,19 @@ def update_user(
 
 
 @router.get("/{user_id}/photo", summary="Get User Photo")
-def get_user_photo(user_id: int, db: Session = Depends(get_db)):
+@owner_or_admin_endpoint("user_id")
+async def get_user_photo(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Retrieve a user's profile photo.
 
     - **user_id**: The ID of the user whose photo to retrieve
 
     Returns the photo file or 404 if not found.
+    Users can only access their own photos, admins can access any photo.
     """
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -318,6 +344,7 @@ def get_user_photo(user_id: int, db: Session = Depends(get_db)):
                 detail="Photo file not found",
             )
 
+        logger.info(f"User {current_user.email} accessed photo of user {user_id}")
         return FileResponse(
             path=photo_path,
             media_type="image/jpeg",

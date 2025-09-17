@@ -8,6 +8,8 @@ hashing and JWT for token-based authentication.
 from datetime import datetime, timedelta
 from typing import Optional
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt  # type: ignore
 from passlib.context import CryptContext  # type: ignore
 
@@ -105,3 +107,146 @@ def get_user_from_token(token: str) -> Optional[str]:
 
     email = payload.get("sub")
     return email if isinstance(email, str) else None
+
+
+# Security scheme for JWT Bearer tokens
+security = HTTPBearer()
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """
+    Dependency to get the current authenticated user from JWT token.
+
+    Args:
+        credentials: HTTP Bearer authorization credentials
+
+    Returns:
+        Current authenticated user
+
+    Raises:
+        HTTPException: If token is invalid or user not found
+    """
+    from app.db.models import User
+    from app.db.session import SessionLocal
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    db = SessionLocal()
+    try:
+        # Extract and verify token
+        token = credentials.credentials
+        payload = verify_token(token)
+
+        if payload is None:
+            raise credentials_exception
+
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+
+        # Get user from database
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            raise credentials_exception
+
+        return user
+
+    except JWTError:
+        raise credentials_exception
+    finally:
+        db.close()
+
+
+def get_current_admin_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """
+    Dependency to get current authenticated admin user.
+
+    Args:
+        credentials: HTTP Bearer authorization credentials
+
+    Returns:
+        Current authenticated admin user
+
+    Raises:
+        HTTPException: If token is invalid, user not found, or not admin
+    """
+    from app.db.models import UserRole
+
+    current_user = get_current_user(credentials)
+
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+
+    return current_user
+
+
+def create_user_token(user, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create a JWT token for a specific user.
+
+    Args:
+        user: User object with email attribute
+        expires_delta: Optional custom expiration time
+
+    Returns:
+        JWT token string
+    """
+    data = {
+        "sub": user.email,
+        "user_id": user.id,
+        "role": user.role.value,
+    }
+    return create_access_token(data, expires_delta)
+
+
+def verify_user_token(token: str):
+    """
+    Verify token and return user information.
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Dictionary with user info if valid, None otherwise
+    """
+    payload = verify_token(token)
+    if payload is None:
+        return None
+
+    return {
+        "email": payload.get("sub"),
+        "user_id": payload.get("user_id"),
+        "role": payload.get("role"),
+    }
+
+
+def check_user_access(current_user, target_user_id: int) -> bool:
+    """
+    Check if current user can access another user's data.
+
+    Args:
+        current_user: Current authenticated user
+        target_user_id: ID of user being accessed
+
+    Returns:
+        True if access allowed, False otherwise
+    """
+    from app.db.models import UserRole
+
+    # Admin can access anyone
+    if current_user.role == UserRole.ADMIN:
+        return True
+
+    # Users can only access their own data
+    return current_user.id == target_user_id
