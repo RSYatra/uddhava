@@ -6,3 +6,5 @@ extend-ignore = E203,W503
 per-file-ignores =
     # Allow main module entrypoint to disable security warning for uvicorn.run
     main.py: S104
+    # Allow long lines in email service for HTML templates
+    app/services/email_service.py: E501

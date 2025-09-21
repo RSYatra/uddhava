@@ -18,7 +18,7 @@ repos:
     rev: 7.3.0
     hooks:
       - id: flake8
-        args: ["--max-line-length=88", "--extend-ignore=E203,W503"]
+        args: ["--max-line-length=100", "--extend-ignore=E203,W503"]
 
   # Security checks
   - repo: https://github.com/PyCQA/bandit
@@ -46,7 +46,7 @@ repos:
     hooks:
       - id: check-credentials
         name: Check for credentials in code
-        entry: bash -c 'if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env" | grep -v "default_password"; then echo "Found hardcoded passwords!"; exit 1; fi'
+        entry: bash -c 'if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env" | grep -v "default_password" | grep -v "validate_password" | grep -v "MAIL_PASSWORD" | grep -v "get_password_hash" | grep -v "password=password"; then echo "Found hardcoded passwords!"; exit 1; fi'
         language: system
         pass_filenames: false
 

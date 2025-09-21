@@ -52,6 +52,28 @@ class Settings(BaseSettings):
     # Security
     debug_db_token: Optional[str] = None
 
+    # Email Configuration
+    mail_username: str = "test@example.com"
+    mail_password: str = "test-password"
+    mail_from: str = "test@example.com"
+    mail_port: int = 587
+    mail_server: str = "smtp.gmail.com"
+    mail_starttls: bool = True
+    mail_ssl_tls: bool = False
+    mail_use_credentials: bool = True
+    mail_validate_certs: bool = True
+
+    # Password Reset
+    password_reset_token_expire_hours: int = 1
+    password_reset_url_base: str = "http://localhost:3000/reset-password"
+
+    # Email Verification
+    email_verification_token_expire_hours: int = 24
+    email_verification_url_base: str = "http://localhost:3000/verify-email"
+
+    # Frontend URLs
+    frontend_login_url: str = "http://localhost:3000/login"
+
     @field_validator("jwt_secret_key")
     def validate_jwt_secret(cls, v):
         """Warn if using default secret key."""
@@ -108,10 +130,24 @@ class Settings(BaseSettings):
                 "env": "JWT_ACCESS_TOKEN_EXPIRE_MINUTES"
             },
             "max_upload_size_mb": {"env": "MAX_UPLOAD_SIZE_MB"},
+            "mail_username": {"env": "MAIL_USERNAME"},
+            "mail_password": {"env": "MAIL_PASSWORD"},
+            "mail_from": {"env": "MAIL_FROM"},
+            "mail_port": {"env": "MAIL_PORT"},
+            "mail_server": {"env": "MAIL_SERVER"},
+            "password_reset_token_expire_hours": {
+                "env": "PASSWORD_RESET_TOKEN_EXPIRE_HOURS"
+            },
+            "password_reset_url_base": {"env": "PASSWORD_RESET_URL_BASE"},
+            "email_verification_token_expire_hours": {
+                "env": "EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS"
+            },
+            "email_verification_url_base": {"env": "EMAIL_VERIFICATION_URL_BASE"},
+            "frontend_login_url": {"env": "FRONTEND_LOGIN_URL"},
         }
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """
     Get cached application settings.

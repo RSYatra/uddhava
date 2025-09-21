@@ -8,7 +8,9 @@ validation and serialization.
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.core.password_validation import validate_password_strength
 
 
 class UserBase(BaseModel):
@@ -37,8 +39,14 @@ class UserSignup(UserBase):
         ...,
         min_length=8,
         max_length=128,
-        description="Password (min 8 characters)",
+        description="Password: min 8 chars, uppercase, lowercase, number, special char",
     )
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength_signup(cls, v):
+        """Validate password strength requirements for signup."""
+        return validate_password_strength(v)
 
 
 class UserLogin(BaseModel):

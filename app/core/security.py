@@ -250,3 +250,83 @@ def check_user_access(current_user, target_user_id: int) -> bool:
 
     # Users can only access their own data
     return current_user.id == target_user_id
+
+
+def generate_password_reset_token(email: str) -> str:
+    """
+    Generate a secure password reset token.
+
+    Args:
+        email: User's email address
+
+    Returns:
+        Password reset token
+    """
+    import secrets
+    from datetime import datetime, timezone
+
+    # Create token data
+    token_data = {
+        "sub": email,
+        "type": "password_reset",
+        "iat": datetime.now(timezone.utc).timestamp(),
+        "nonce": secrets.token_hex(8),  # Add randomness
+    }
+
+    # Create token with custom expiration
+    expires_delta = timedelta(hours=settings.password_reset_token_expire_hours)
+    return create_access_token(token_data, expires_delta)
+
+
+def verify_password_reset_token(token: str) -> Optional[str]:
+    """
+    Verify password reset token and return user email.
+
+    Args:
+        token: Password reset token
+
+    Returns:
+        User email if token is valid, None otherwise
+    """
+    payload = verify_token(token)
+    if payload is None:
+        return None
+
+    # Check if it's a password reset token
+    if payload.get("type") != "password_reset":
+        return None
+
+    # Extract email
+    email = payload.get("sub")
+    return email if isinstance(email, str) else None
+
+
+def is_token_expired(user) -> bool:
+    """
+    Check if user's password reset token has expired.
+
+    Args:
+        user: User object with password_reset_expires field
+
+    Returns:
+        True if token expired or doesn't exist, False otherwise
+    """
+    if not user.password_reset_expires:
+        return True
+
+    from datetime import datetime, timezone
+
+    return user.password_reset_expires <= datetime.now(timezone.utc)
+
+
+def clear_reset_token(user, db_session) -> None:
+    """
+    Clear user's password reset token and expiration.
+
+    Args:
+        user: User object
+        db_session: Database session
+    """
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    db_session.commit()
