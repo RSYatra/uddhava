@@ -19,7 +19,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import auth, health, users
+from app.api.routes import auth, devotee_auth, devotees, health, users
+from app.core.auth_middleware import (
+    AuthSecurityMiddleware,
+    ContentSecurityPolicyMiddleware,
+    RequestLoggingMiddleware,
+)
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.core.middleware import (
@@ -138,6 +143,15 @@ def setup_middleware(app: FastAPI) -> None:
         # Rate limiting in development for testing
         app.add_middleware(RateLimitMiddleware, calls=1000, period=60)
 
+    # Auth-specific security middleware
+    app.add_middleware(AuthSecurityMiddleware)
+
+    # Content Security Policy middleware
+    app.add_middleware(ContentSecurityPolicyMiddleware)
+
+    # Enhanced request logging middleware
+    app.add_middleware(RequestLoggingMiddleware)
+
     # Security headers
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -198,11 +212,24 @@ def setup_exception_handlers(app: FastAPI) -> None:
         logger.warning(
             f"Request validation error on {request.method} {request.url.path}: {exc}"
         )
+
+        # Sanitize errors to ensure JSON serialization
+        sanitized_errors = []
+        for error in exc.errors():
+            # Make a copy of the error and handle non-serializable ctx
+            sanitized_error = error.copy()
+            if "ctx" in sanitized_error:
+                ctx = sanitized_error["ctx"]
+                if "error" in ctx:
+                    # Convert ValueError to string
+                    sanitized_error["ctx"]["error"] = str(ctx["error"])
+            sanitized_errors.append(sanitized_error)
+
         return JSONResponse(
             status_code=422,
             content={
                 "detail": "Request validation error",
-                "errors": exc.errors(),
+                "errors": sanitized_errors,
                 "status_code": 422,
             },
         )
@@ -326,8 +353,14 @@ def register_routes(app: FastAPI) -> None:
     # Authentication routes
     app.include_router(auth.router, prefix="/api/v1")
 
-    # User routes (authentication required)
+    # Devotee authentication routes (new unified auth system)
+    app.include_router(devotee_auth.router, prefix="/api/v1")
+
+    # User routes (authentication required) - Legacy, will be deprecated
     app.include_router(users.router, prefix="/api/v1")
+
+    # Devotee routes (enhanced user management)
+    app.include_router(devotees.router, prefix="/api/v1")
 
     # Root endpoint - Landing page
     @app.get("/", tags=["Root"], include_in_schema=False)
@@ -371,7 +404,8 @@ def register_routes(app: FastAPI) -> None:
             "endpoints": {
                 "health": "/api/v1/health",
                 "auth": "/api/v1/auth/",
-                "users": "/api/v1/users/",
+                "users": "/api/v1/users/",  # Legacy - will be deprecated
+                "devotees": "/api/v1/devotees/",  # Enhanced devotee management
                 "docs": "/docs" if not settings.is_production else None,
                 "redoc": "/redoc" if not settings.is_production else None,
             },

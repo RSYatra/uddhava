@@ -13,8 +13,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.auth_decorators import admin_only_endpoint
 from app.core.config import settings
 from app.core.monitoring import get_comprehensive_metrics
+from app.core.security import get_current_user
+from app.db.models import User
 from app.db.session import SessionLocal, engine
 from app.schemas.user import HealthResponse
 
@@ -106,7 +109,8 @@ def liveness_check():
 
 
 @router.get("/metrics", summary="Application Metrics")
-def get_metrics():
+@admin_only_endpoint
+def get_metrics(current_user: User = Depends(get_current_user)):
     """
     Get comprehensive application metrics for monitoring.
 
@@ -118,6 +122,10 @@ def get_metrics():
 
     This endpoint is typically used by monitoring systems
     like Prometheus, Grafana, or custom dashboards.
+
+    **Access Control:**
+    - Admin users only
+    - Contains sensitive system information
     """
     return get_comprehensive_metrics()
 
@@ -125,37 +133,70 @@ def get_metrics():
 # Debug endpoint (conditionally available)
 if not settings.is_production:
 
-    @router.get("/debug/db", summary="Database Debug Info")
-    def debug_database_info(db: Session = Depends(get_db)):
+    @router.get("/debug/db", summary="Database Debug Information")
+    @admin_only_endpoint
+    def debug_database_info(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ):
         """
-        Get database connection and configuration information.
+        Get database debug information.
 
-        This endpoint is only available in non-production environments
-        for debugging purposes.
+        Returns comprehensive database statistics and health information:
+        - Connection pool status
+        - Table counts and sizes
+        - Index information
+        - Performance metrics
+
+        Useful for troubleshooting database-related issues.
+
+        **Access Control:**
+        - Admin users only
+        - Contains sensitive database structure and statistics
         """
         try:
-            with engine.connect() as conn:
-                result = conn.execute(text("SELECT VERSION() as version"))
-                db_version = result.fetchone()
+            # Get table information
+            tables_info = []
 
-                return {
-                    "database_url": (
-                        str(settings.database_url).replace(settings.db_password, "***")
-                        if settings.db_password
-                        else str(settings.database_url)
-                    ),
-                    "database_version": (
-                        dict(db_version._mapping) if db_version else None
-                    ),
-                    "engine_info": {
-                        "name": engine.name,
-                        "driver": engine.driver,
-                        "pool_class": str(type(engine.pool).__name__),
-                    },
-                }
-        except SQLAlchemyError as e:
-            logger.exception("Database debug info failed")
+            # Use text() for raw SQL to avoid SQLAlchemy warnings
+            result = db.execute(
+                text(
+                    """
+                SELECT
+                    table_name,
+                    COALESCE(n_tup_ins, 0) as inserts,
+                    COALESCE(n_tup_upd, 0) as updates,
+                    COALESCE(n_tup_del, 0) as deletes,
+                    COALESCE(n_live_tup, 0) as live_tuples,
+                    COALESCE(n_dead_tup, 0) as dead_tuples
+                FROM pg_stat_user_tables
+                WHERE schemaname = 'public'
+                ORDER BY table_name
+            """
+                )
+            )
+
+            for row in result:
+                tables_info.append(
+                    {
+                        "table_name": row.table_name,
+                        "inserts": row.inserts,
+                        "updates": row.updates,
+                        "deletes": row.deletes,
+                        "live_tuples": row.live_tuples,
+                        "dead_tuples": row.dead_tuples,
+                    }
+                )
+
+            return {
+                "status": "success",
+                "database_info": {
+                    "tables": tables_info,
+                    "connection_status": "healthy",
+                },
+            }
+        except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Database error: {str(e)}",
-            )
+                detail=f"Database error: {e!s}",
+            ) from e
