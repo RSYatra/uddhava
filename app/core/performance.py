@@ -104,10 +104,9 @@ class SimpleCache:
             if time.time() < entry["expires_at"]:
                 logger.debug(f"Cache hit: {key}")
                 return entry["value"]
-            else:
-                # Expired
-                del self._cache[key]
-                logger.debug(f"Cache expired: {key}")
+            # Expired
+            del self._cache[key]
+            logger.debug(f"Cache expired: {key}")
 
         logger.debug(f"Cache miss: {key}")
         return None
@@ -192,7 +191,7 @@ def cached(ttl: int = 300, prefix: str = ""):
     Usage:
         @cached(ttl=600, prefix="user")
         def get_user_by_id(db: Session, user_id: int):
-            return db.query(User).filter(User.id == user_id).first()
+            return db.query(Devotee).filter(Devotee.id == user_id).first()
     """
 
     def decorator(func: Callable) -> Callable:
@@ -258,11 +257,11 @@ class BatchProcessor:
                 session.commit()
 
                 logger.debug(
-                    f"Inserted batch {i//batch_size + 1}: {len(batch)} records"
+                    f"Inserted batch {i // batch_size + 1}: {len(batch)} records"
                 )
 
             except Exception as e:
-                logger.error(f"Batch insert failed at batch {i//batch_size + 1}: {e}")
+                logger.error(f"Batch insert failed at batch {i // batch_size + 1}: {e}")
                 session.rollback()
                 raise
 

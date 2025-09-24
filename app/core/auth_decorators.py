@@ -11,7 +11,7 @@ from typing import Callable
 from fastapi import Depends, HTTPException, status
 
 from app.core.security import get_current_user
-from app.db.models import User, UserRole
+from app.db.models import Devotee, UserRole
 
 
 def require_auth(func: Callable) -> Callable:
@@ -56,7 +56,7 @@ def require_role(*allowed_roles: UserRole):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            current_user: User = kwargs.get("current_user")
+            current_user: Devotee = kwargs.get("current_user")
             if not current_user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -87,13 +87,13 @@ def require_owner_or_admin(user_id_param: str = "user_id"):
 
     Usage:
         @require_owner_or_admin('user_id')
-        def update_user(user_id: int, current_user: User = Depends(get_current_user)):
+        def update_user(user_id: int, current_user: Devotee = Depends(get_current_user)):
             pass
 
         @require_owner_or_admin('target_user_id')
         def custom_endpoint(
             target_user_id: int,
-            current_user: User = Depends(get_current_user)
+            current_user: Devotee = Depends(get_current_user)
         ):
             pass
     """
@@ -101,7 +101,7 @@ def require_owner_or_admin(user_id_param: str = "user_id"):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            current_user: User = kwargs.get("current_user")
+            current_user: Devotee = kwargs.get("current_user")
             if not current_user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -143,7 +143,7 @@ def require_admin(func: Callable) -> Callable:
 
     Usage:
         @require_admin
-        def admin_endpoint(current_user: User = Depends(get_current_user)):
+        def admin_endpoint(current_user: Devotee = Depends(get_current_user)):
             pass
     """
     return require_role(UserRole.ADMIN)(func)
@@ -159,7 +159,7 @@ def inject_current_user(func: Callable) -> Callable:
     Usage:
         @inject_current_user
         @require_auth
-        def my_endpoint(user_id: int, current_user: User):
+        def my_endpoint(user_id: int, current_user: Devotee):
             # current_user is automatically injected
             pass
     """
@@ -173,7 +173,7 @@ def inject_current_user(func: Callable) -> Callable:
         # Add current_user parameter with dependency injection
         @functools.wraps(func)
         async def wrapper(
-            *args, current_user: User = Depends(get_current_user), **kwargs
+            *args, current_user: Devotee = Depends(get_current_user), **kwargs
         ):
             # Inject current_user into kwargs
             kwargs["current_user"] = current_user

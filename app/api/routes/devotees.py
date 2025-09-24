@@ -26,7 +26,7 @@ from app.core.auth_decorators import (
     owner_or_admin_endpoint,
 )
 from app.core.security import get_current_user
-from app.db.models import Gender, InitiationStatus, MaritalStatus, User
+from app.db.models import Devotee, Gender, InitiationStatus, MaritalStatus
 from app.db.session import SessionLocal
 from app.schemas.devotee import (
     DevoteeCreate,
@@ -122,7 +122,7 @@ async def get_devotees(
     ),
     # Dependencies
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Retrieve devotees with comprehensive filtering, search, and pagination.
@@ -194,7 +194,7 @@ async def create_devotee(
     devotee_data: DevoteeCreate,
     photo: Optional[UploadFile] = File(None, description="Optional profile photo"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Create a new devotee with comprehensive information.
@@ -251,7 +251,7 @@ async def create_devotee(
 async def get_devotee(
     devotee_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Retrieve detailed information about a specific devotee.
@@ -302,7 +302,7 @@ async def update_devotee(
     devotee_update: DevoteeUpdate,
     photo: Optional[UploadFile] = File(None, description="Optional new profile photo"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Update devotee information with comprehensive validation.
@@ -364,7 +364,7 @@ async def search_devotees_text(
     q: str = Query(..., min_length=2, max_length=100, description="Search query"),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Perform fast text search across devotee information.
@@ -420,7 +420,7 @@ async def get_devotees_by_location(
     state: Optional[str] = Query(None, description="State or province"),
     city: Optional[str] = Query(None, description="City name"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Get devotees filtered by geographic location.
@@ -470,7 +470,7 @@ async def get_devotees_by_location(
 async def get_devotees_by_spiritual_master(
     master_name: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Get all devotees of a specific spiritual master.
@@ -511,7 +511,7 @@ async def get_devotees_by_spiritual_master(
 @admin_only_endpoint
 async def get_devotee_statistics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Get comprehensive devotee statistics and analytics.
@@ -556,7 +556,7 @@ async def get_devotee_statistics(
 async def get_devotee_photo(
     devotee_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Retrieve a devotee's profile photo.
@@ -609,7 +609,7 @@ async def get_devotee_photo(
 @admin_only_endpoint
 async def export_devotees_csv(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Export devotee data to CSV format for admin users.
@@ -641,7 +641,7 @@ async def export_devotees_csv(
 async def validate_email_availability(
     email: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ):
     """
     Check if email address is available for registration.

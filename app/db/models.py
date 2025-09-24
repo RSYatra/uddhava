@@ -265,51 +265,7 @@ class Devotee(Base):
         }
 
 
-# Keep User model for backward compatibility during migration
-class User(Base):
-    """Legacy User model - kept for backward compatibility during migration."""
-
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(
-        SQLEnum(UserRole, name="userrole"),
-        nullable=False,
-        default=UserRole.USER,
-    )
-    chanting_rounds = Column(Integer, nullable=True, default=16)
-    photo = Column(String(500), nullable=True)
-
-    # Email verification
-    email_verified = Column(Boolean, nullable=False, default=False)
-    verification_token = Column(String(255), nullable=True)
-    verification_expires = Column(DateTime(timezone=True), nullable=True)
-
-    # Password reset
-    password_reset_token = Column(String(255), nullable=True)
-    password_reset_expires = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    def __repr__(self):
-        return f"<User(id={self.id}, email={self.email}, role={self.role})>"
-
-    @property
-    def is_admin(self) -> bool:
-        """Check if user has admin role."""
-        return self.role == UserRole.ADMIN
-
-    @property
-    def is_user(self) -> bool:
-        """Check if user has regular user role."""
-        return self.role == UserRole.USER
-
-    def can_access_user(self, user_id: int) -> bool:
-        """Check if user can access another user's data."""
-        return self.is_admin or self.id == user_id
+# User model removed - using Devotee model only for production
 
 
 # --- Email normalization events ---
@@ -327,15 +283,4 @@ def normalize_devotee_email_before_update(mapper, connection, target):  # type: 
         target.email = target.email.strip().lower()
 
 
-@event.listens_for(User, "before_insert")
-def normalize_user_email_before_insert(mapper, connection, target):  # type: ignore[misc]
-    """Normalize email to lowercase before inserting."""
-    if target.email:
-        target.email = target.email.strip().lower()
-
-
-@event.listens_for(User, "before_update")
-def normalize_user_email_before_update(mapper, connection, target):  # type: ignore[misc]
-    """Normalize email to lowercase before updating."""
-    if target.email:
-        target.email = target.email.strip().lower()
+# User model event listeners removed - using Devotee model only

@@ -139,7 +139,7 @@ def get_db_context() -> Generator[Session, None, None]:
 
     Usage:
         with get_db_context() as db:
-            user = db.query(User).first()
+            devotee = db.query(Devotee).first()
     """
     db = SessionLocal()
     try:

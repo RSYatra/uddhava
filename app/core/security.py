@@ -12,8 +12,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt  # type: ignore
 from passlib.context import CryptContext  # type: ignore
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.session import get_db
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -115,21 +117,22 @@ security = HTTPBearer()
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
 ):
     """
-    Dependency to get the current authenticated user from JWT token.
+    Dependency to get the current authenticated devotee from JWT token.
 
     Args:
         credentials: HTTP Bearer authorization credentials
+        db: Database session
 
     Returns:
-        Current authenticated user
+        Current authenticated devotee
 
     Raises:
-        HTTPException: If token is invalid or user not found
+        HTTPException: If token is invalid or devotee not found
     """
-    from app.db.models import User
-    from app.db.session import SessionLocal
+    from app.db.models import Devotee
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -137,7 +140,6 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    db = SessionLocal()
     try:
         # Extract and verify token
         token = credentials.credentials
@@ -146,68 +148,86 @@ def get_current_user(
         if payload is None:
             raise credentials_exception
 
-        email: str = payload.get("sub")
-        if email is None:
+        # Handle both old user tokens (email in 'sub') and new devotee tokens (devotee_id in 'sub')
+        user_identifier = payload.get("sub")
+        if user_identifier is None:
             raise credentials_exception
 
-        # Get user from database
-        user = db.query(User).filter(User.email == email).first()
-        if user is None:
+        # Try to get devotee by ID first (new format), then by email (legacy format)
+        devotee = None
+        try:
+            devotee_id = int(user_identifier)
+            devotee = db.query(Devotee).filter(Devotee.id == devotee_id).first()
+        except (ValueError, TypeError):
+            # If not a valid integer, treat as email (legacy token format)
+            devotee = db.query(Devotee).filter(Devotee.email == user_identifier).first()
+
+        if devotee is None:
             raise credentials_exception
 
-        return user
+        return devotee
 
     except JWTError:
         raise credentials_exception
-    finally:
-        db.close()
 
 
 def get_current_admin_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
 ):
     """
-    Dependency to get current authenticated admin user.
+    Dependency to get current authenticated admin devotee.
 
     Args:
         credentials: HTTP Bearer authorization credentials
+        db: Database session
 
     Returns:
-        Current authenticated admin user
+        Current authenticated admin devotee
 
     Raises:
-        HTTPException: If token is invalid, user not found, or not admin
+        HTTPException: If token is invalid, devotee not found, or not admin
     """
     from app.db.models import UserRole
 
-    current_user = get_current_user(credentials)
+    current_devotee = get_current_user(credentials, db)
 
-    if current_user.role != UserRole.ADMIN:
+    if current_devotee.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required",
         )
 
-    return current_user
+    return current_devotee
 
 
-def create_user_token(user, expires_delta: Optional[timedelta] = None) -> str:
+def create_devotee_token(devotee, expires_delta: Optional[timedelta] = None) -> str:
     """
-    Create a JWT token for a specific user.
+    Create a JWT token for a specific devotee.
 
     Args:
-        user: User object with email attribute
+        devotee: Devotee object with email and id attributes
         expires_delta: Optional custom expiration time
 
     Returns:
         JWT token string
     """
     data = {
-        "sub": user.email,
-        "user_id": user.id,
-        "role": user.role.value,
+        "sub": str(devotee.id),  # Use devotee ID as subject for new tokens
+        "email": devotee.email,
+        "role": "devotee",  # All devotees have devotee role for API access
+        "devotee_role": devotee.role.value,  # Actual admin/user role
     }
     return create_access_token(data, expires_delta)
+
+
+# Backward compatibility alias
+def create_user_token(user, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Legacy function for backward compatibility.
+    Use create_devotee_token for new code.
+    """
+    return create_devotee_token(user, expires_delta)
 
 
 def verify_user_token(token: str):
@@ -231,13 +251,13 @@ def verify_user_token(token: str):
     }
 
 
-def check_user_access(current_user, target_user_id: int) -> bool:
+def check_devotee_access(current_devotee, target_devotee_id: int) -> bool:
     """
-    Check if current user can access another user's data.
+    Check if current devotee can access another devotee's data.
 
     Args:
-        current_user: Current authenticated user
-        target_user_id: ID of user being accessed
+        current_devotee: Current authenticated devotee
+        target_devotee_id: ID of devotee being accessed
 
     Returns:
         True if access allowed, False otherwise
@@ -245,11 +265,20 @@ def check_user_access(current_user, target_user_id: int) -> bool:
     from app.db.models import UserRole
 
     # Admin can access anyone
-    if current_user.role == UserRole.ADMIN:
+    if current_devotee.role == UserRole.ADMIN:
         return True
 
-    # Users can only access their own data
-    return current_user.id == target_user_id
+    # Devotees can only access their own data
+    return current_devotee.id == target_devotee_id
+
+
+# Backward compatibility alias
+def check_user_access(current_user, target_user_id: int) -> bool:
+    """
+    Legacy function for backward compatibility.
+    Use check_devotee_access for new code.
+    """
+    return check_devotee_access(current_user, target_user_id)
 
 
 def generate_password_reset_token(email: str) -> str:

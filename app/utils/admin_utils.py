@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import User, UserRole
+from app.db.models import Devotee, UserRole
 from app.db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def create_admin_user(
     secret: str,
     chanting_rounds: int = 16,
     db: Optional[Session] = None,
-) -> User:
+) -> Devotee:
     """
     Create an admin user in the system.
 
@@ -46,10 +46,10 @@ def create_admin_user(
     try:
         # Check if user already exists
         existing_user = (
-            db_session.query(User).filter(User.email == email.lower()).first()
+            db_session.query(Devotee).filter(Devotee.email == email.lower()).first()
         )
         if existing_user:
-            logger.warning(f"User with email {email} already exists")
+            logger.warning(f"Devotee with email {email} already exists")
             if existing_user.role != UserRole.ADMIN:
                 # Promote existing user to admin
                 existing_user.role = UserRole.ADMIN
@@ -62,12 +62,12 @@ def create_admin_user(
         from app.core.security import get_password_hash as hash_func
 
         hashed_value = hash_func(secret)
-        admin_user = User(
-            name=name.strip(),
+        admin_user = Devotee(
+            legal_name=name.strip(),
             email=email.lower().strip(),
             password_hash=hashed_value,
             role=UserRole.ADMIN,
-            chanting_rounds=chanting_rounds,
+            chanting_number_of_rounds=chanting_rounds,
         )
 
         db_session.add(admin_user)
@@ -101,17 +101,16 @@ def ensure_admin_exists() -> bool:
 
     try:
         # Check if any admin exists
-        admin_count = db.query(User).filter(User.role == UserRole.ADMIN).count()
+        admin_count = db.query(Devotee).filter(Devotee.role == UserRole.ADMIN).count()
 
         if admin_count > 0:
             logger.info(f"Found {admin_count} admin user(s) in system")
             return True
-        else:
-            logger.warning(
-                "No admin users found in system. "
-                "Use promote_user_to_admin() or create_admin_user() to create one."
-            )
-            return False
+        logger.warning(
+            "No admin users found in system. "
+            "Use promote_user_to_admin() or create_admin_user() to create one."
+        )
+        return False
 
     except Exception as e:
         logger.error(f"Failed to check admin existence: {e}")
@@ -134,13 +133,13 @@ def promote_user_to_admin(email: str, db: Optional[Session] = None) -> bool:
     db_session = db or SessionLocal()
 
     try:
-        user = db_session.query(User).filter(User.email == email.lower()).first()
+        user = db_session.query(Devotee).filter(Devotee.email == email.lower()).first()
         if not user:
-            logger.error(f"User not found: {email}")
+            logger.error(f"Devotee not found: {email}")
             return False
 
         if user.role == UserRole.ADMIN:
-            logger.info(f"User {email} is already an admin")
+            logger.info(f"Devotee {email} is already an admin")
             return True
 
         user.role = UserRole.ADMIN
@@ -173,17 +172,19 @@ def demote_admin_to_user(email: str, db: Optional[Session] = None) -> bool:
     db_session = db or SessionLocal()
 
     try:
-        user = db_session.query(User).filter(User.email == email.lower()).first()
+        user = db_session.query(Devotee).filter(Devotee.email == email.lower()).first()
         if not user:
-            logger.error(f"User not found: {email}")
+            logger.error(f"Devotee not found: {email}")
             return False
 
         if user.role != UserRole.ADMIN:
-            logger.info(f"User {email} is not an admin")
+            logger.info(f"Devotee {email} is not an admin")
             return True
 
         # Check if this is the last admin
-        admin_count = db_session.query(User).filter(User.role == UserRole.ADMIN).count()
+        admin_count = (
+            db_session.query(Devotee).filter(Devotee.role == UserRole.ADMIN).count()
+        )
         if admin_count <= 1:
             logger.error("Cannot demote last admin user")
             return False
@@ -204,7 +205,7 @@ def demote_admin_to_user(email: str, db: Optional[Session] = None) -> bool:
             db_session.close()
 
 
-def list_admin_users(db: Optional[Session] = None) -> list[User]:
+def list_admin_users(db: Optional[Session] = None) -> list[Devotee]:
     """
     Get list of all admin users.
 
@@ -217,7 +218,7 @@ def list_admin_users(db: Optional[Session] = None) -> list[User]:
     db_session = db or SessionLocal()
 
     try:
-        admins = db_session.query(User).filter(User.role == UserRole.ADMIN).all()
+        admins = db_session.query(Devotee).filter(Devotee.role == UserRole.ADMIN).all()
         logger.info(f"Found {len(admins)} admin users")
         return admins
     except Exception as e:
@@ -226,8 +227,3 @@ def list_admin_users(db: Optional[Session] = None) -> list[User]:
     finally:
         if not db:
             db_session.close()
-
-
-# For command line usage, use the promote_user_to_admin() function instead:
-# python -c "from app.utils.admin_utils import promote_user_to_admin; \
-# promote_user_to_admin('user@example.com')"
