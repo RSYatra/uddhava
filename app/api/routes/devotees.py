@@ -36,7 +36,9 @@ from app.schemas.devotee import (
     DevoteeStatsResponse,
     DevoteeUpdate,
 )
-from app.services.devotee_service import devotee_service
+
+# NOTE: Using service class directly with per-request instantiation
+from app.services.devotee_service import DevoteeService
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +169,8 @@ async def get_devotees(
         )
 
         # Get filtered devotees using service
-        result = devotee_service.get_devotees_with_filters(db, filters)
+        service = DevoteeService(db)
+        result = service.get_devotees_with_filters(db, filters)
 
         logger.info(f"Retrieved {len(result.devotees)} devotees with filters")
         return result
@@ -223,7 +226,8 @@ async def create_devotee(
     - Input sanitization
     """
     try:
-        devotee = devotee_service.create_devotee(db, devotee_data, photo)
+        service = DevoteeService(db)
+        devotee = service.create_devotee(db, devotee_data, photo)
         logger.info(f"Created new devotee: {devotee.email}")
         return devotee
 
@@ -270,7 +274,8 @@ async def get_devotee(
     - Children details protected
     """
     try:
-        devotee = devotee_service.get_devotee_by_id(db, devotee_id)
+        service = DevoteeService(db)
+        devotee = service.get_devotee_by_id(db, devotee_id)
         if not devotee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -327,7 +332,8 @@ async def update_devotee(
     - Version history (future enhancement)
     """
     try:
-        devotee = devotee_service.update_devotee(db, devotee_id, devotee_update, photo)
+        service = DevoteeService(db)
+        devotee = service.update_devotee(db, devotee_id, devotee_update, photo)
         if not devotee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -388,7 +394,8 @@ async def search_devotees_text(
                 detail="Search query must be at least 2 characters",
             )
 
-        devotees = devotee_service.search_devotees_by_text(db, q.strip(), limit)
+        service = DevoteeService(db)
+        devotees = service.search_devotees_by_text(db, q.strip(), limit)
         logger.info(f"Text search for '{q}' returned {len(devotees)} results")
         return devotees
 
@@ -435,7 +442,9 @@ async def get_devotees_by_location(
     - Efficient sorting by name
     """
     try:
-        devotees = devotee_service.get_devotees_by_location(db, country, state, city)
+        service = DevoteeService(db)
+
+        devotees = service.get_devotees_by_location(db, country, state, city)
 
         location_desc = f"{city}, " if city else ""
         location_desc += f"{state}, " if state else ""
@@ -478,7 +487,9 @@ async def get_devotees_by_spiritual_master(
     - Communication with specific spiritual groups
     """
     try:
-        devotees = devotee_service.get_devotees_by_spiritual_master(db, master_name)
+        service = DevoteeService(db)
+
+        devotees = service.get_devotees_by_spiritual_master(db, master_name)
         logger.info(
             f"Retrieved {len(devotees)} devotees of spiritual master: {master_name}"
         )
@@ -526,7 +537,9 @@ async def get_devotee_statistics(
     - No individual devotee identification
     """
     try:
-        stats = devotee_service.get_devotee_statistics(db)
+        service = DevoteeService(db)
+
+        stats = service.get_devotee_statistics(db)
         logger.info("Retrieved devotee statistics")
         return stats
 
@@ -564,7 +577,9 @@ async def get_devotee_photo(
     - File existence validation
     """
     try:
-        devotee = devotee_service.get_devotee_by_id(db, devotee_id)
+        service = DevoteeService(db)
+
+        devotee = service.get_devotee_by_id(db, devotee_id)
         if not devotee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -646,7 +661,9 @@ async def validate_email_availability(
     - Generic responses for security
     """
     try:
-        existing_devotee = devotee_service.get_devotee_by_email(db, email)
+        service = DevoteeService(db)
+
+        existing_devotee = service.get_devotee_by_email(db, email)
         return {
             "email": email,
             "available": existing_devotee is None,

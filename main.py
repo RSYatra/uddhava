@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import auth, devotee_auth, devotees, health, users
+from app.api.routes import devotee_auth, devotees, health
 from app.core.auth_middleware import (
     AuthSecurityMiddleware,
     ContentSecurityPolicyMiddleware,
@@ -350,14 +350,8 @@ def register_routes(app: FastAPI) -> None:
     # Health checks (no authentication required)
     app.include_router(health.router, prefix="/api/v1")
 
-    # Authentication routes
-    app.include_router(auth.router, prefix="/api/v1")
-
     # Devotee authentication routes (new unified auth system)
     app.include_router(devotee_auth.router, prefix="/api/v1")
-
-    # User routes (authentication required) - Legacy, will be deprecated
-    app.include_router(users.router, prefix="/api/v1")
 
     # Devotee routes (enhanced user management)
     app.include_router(devotees.router, prefix="/api/v1")
@@ -403,8 +397,6 @@ def register_routes(app: FastAPI) -> None:
             "description": "Radha Shyam Sundar Yatra Management API",
             "endpoints": {
                 "health": "/api/v1/health",
-                "auth": "/api/v1/auth/",
-                "users": "/api/v1/users/",  # Legacy - will be deprecated
                 "devotees": "/api/v1/devotees/",  # Enhanced devotee management
                 "docs": "/docs" if not settings.is_production else None,
                 "redoc": "/redoc" if not settings.is_production else None,

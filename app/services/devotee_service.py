@@ -49,7 +49,8 @@ class DevoteeService:
     - Business rule validation
     """
 
-    def __init__(self):
+    def __init__(self, db: Session):
+        self.db = db
         self.upload_dir = Path(settings.upload_directory)
         self.upload_dir.mkdir(exist_ok=True)
 
@@ -448,13 +449,11 @@ class DevoteeService:
         )
 
     # Authentication methods
-    async def create_simple_unverified_devotee(
-        self, db: Session, devotee_data
-    ) -> Devotee:
+    async def create_simple_unverified_devotee(self, devotee_data) -> Devotee:
         """Create an unverified devotee with minimal information and send verification email."""
         # Check if devotee already exists
         existing_devotee = (
-            db.query(Devotee)
+            self.db.query(Devotee)
             .filter(Devotee.email == devotee_data.email.lower())
             .first()
         )
@@ -493,14 +492,14 @@ class DevoteeService:
         )
 
         try:
-            db.add(new_devotee)
-            db.flush()  # Get the ID without committing
+            self.db.add(new_devotee)
+            self.db.flush()  # Get the ID without committing
 
             # Send verification email
             await self._send_verification_email(new_devotee)
 
-            db.commit()
-            db.refresh(new_devotee)
+            self.db.commit()
+            self.db.refresh(new_devotee)
 
             logger.info(
                 f"Created simple unverified devotee with email: {devotee_data.email}"
@@ -508,7 +507,7 @@ class DevoteeService:
             return new_devotee
 
         except Exception as e:
-            db.rollback()
+            self.db.rollback()
             logger.error(f"Failed to create simple unverified devotee: {e!s}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -520,9 +519,9 @@ class DevoteeService:
     ) -> Devotee:
         """Create an unverified devotee and send verification email."""
         # Check if devotee already exists
-        existing_devotee = self.get_devotee_by_email(devotee_data.email)
+        existing_devotee = self.get_devotee_by_email(self.db, devotee_data.email)
         if existing_devotee:
-            if existing_devotee.email_verified:
+            if getattr(existing_devotee, "email_verified", False) is True:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="A verified devotee with this email already exists",
@@ -579,15 +578,14 @@ class DevoteeService:
                 detail="Failed to create devotee account",
             )
 
-    async def verify_devotee_email(self, token: str) -> bool:
-        """Verify devotee's email using verification token."""
+    async def verify_devotee_email(self, token: str) -> str:
+        """Verify devotee's email using verification token.
+
+        Returns:
+            str: The verified email address
+        """
         devotee = (
-            self.db.query(Devotee)
-            .filter(
-                Devotee.verification_token == token,
-                Devotee.email_verified.is_(False),
-            )
-            .first()
+            self.db.query(Devotee).filter(Devotee.verification_token == token).first()
         )
 
         if not devotee:
@@ -596,47 +594,74 @@ class DevoteeService:
                 detail="Invalid or expired verification token",
             )
 
-        # Check if token is expired
-        if devotee.verification_expires < datetime.now(timezone.utc):
+        # Check if already verified
+        if getattr(devotee, "email_verified", False) is True:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification token has expired",
+                detail="Email is already verified",
             )
 
+        # Check if token is expired with proper timezone handling
+        if devotee.verification_expires is not None:
+            current_time = datetime.now(timezone.utc)
+            expires_at = devotee.verification_expires
+
+            # Handle timezone awareness - if tzinfo is None, assume UTC
+            if hasattr(expires_at, "tzinfo") and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            if expires_at < current_time:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Verification token has expired",
+                )
+
         try:
+            # Store email before marking as verified
+            verified_email = devotee.email
+
             # Mark devotee as verified
             devotee.email_verified = True
             devotee.verification_token = None
             devotee.verification_expires = None
 
-            # Send success email
-            email_service = EmailService()
-            await email_service.send_email_verification_success(
-                devotee.email, devotee.legal_name
-            )
-
             self.db.commit()
-            logger.info(f"Verified devotee email: {devotee.email}")
-            return True
+
+            # Send success email
+            try:
+                email_service = EmailService()
+                await email_service.send_email_verification_success(
+                    verified_email, devotee.legal_name
+                )
+            except Exception as email_error:
+                logger.warning(
+                    f"Failed to send verification success email: {email_error}"
+                )
+                # Continue with verification even if email fails
+
+            logger.info(f"Verified devotee email: {verified_email}")
+            return verified_email
 
         except Exception as e:
-            self.db.rollback()
             logger.error(f"Failed to verify devotee email: {e!s}")
+            self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify email",
-            )
+            ) from None
 
     async def resend_verification_email(self, email: str) -> bool:
         """Resend verification email to devotee."""
-        devotee = self.get_devotee_by_email(email)
+        devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Devotee not found",
             )
 
-        if devotee.email_verified:
+        # Check if already verified - ensure we get the actual boolean value
+        already_verified = getattr(devotee, "email_verified", False)
+        if already_verified is True:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email is already verified",
@@ -674,12 +699,12 @@ class DevoteeService:
 
     async def send_password_reset_email(self, email: str) -> bool:
         """Send password reset email to devotee."""
-        devotee = self.get_devotee_by_email(email)
+        devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
             # Don't reveal if email exists for security
             return True
 
-        if not devotee.email_verified:
+        if getattr(devotee, "email_verified", False) is not True:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email must be verified before password reset",
@@ -749,7 +774,7 @@ class DevoteeService:
         self, devotee_id: int, new_password: str, admin_id: int
     ) -> bool:
         """Admin function to reset any devotee's password."""
-        devotee = self.get_devotee_by_id(devotee_id)
+        devotee = self.get_devotee_by_id(self.db, devotee_id)
         if not devotee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -773,11 +798,11 @@ class DevoteeService:
 
     def authenticate_devotee(self, email: str, password: str) -> Optional[Devotee]:
         """Authenticate devotee with email and password."""
-        devotee = self.get_devotee_by_email(email)
+        devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
             return None
 
-        if not devotee.email_verified:
+        if getattr(devotee, "email_verified", False) is not True:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email must be verified before login",
@@ -910,16 +935,26 @@ class DevoteeService:
         """Validate devotee update data according to business rules."""
 
         # Marriage validation for updates
-        marital_status = (
-            devotee_update.marital_status or existing_devotee.marital_status
-        )
-        spouse_name = devotee_update.spouse_name or existing_devotee.spouse_name
+        # Only validate if explicitly setting marital status to married
+        if devotee_update.marital_status == MaritalStatus.MARRIED:
+            # Get the spouse name from update or existing record
+            spouse_name = devotee_update.spouse_name
+            if not spouse_name:
+                # Try to get from existing devotee (avoid SQLAlchemy column issues)
+                try:
+                    existing_spouse = getattr(existing_devotee, "spouse_name", None)
+                    spouse_name = existing_spouse
+                except Exception:
+                    spouse_name = None
 
-        if marital_status == MaritalStatus.MARRIED and not spouse_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Spouse name is required for married devotees",
-            )
+            # Check if spouse name is missing or empty
+            if not spouse_name or (
+                isinstance(spouse_name, str) and spouse_name.strip() == ""
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Spouse name is required for married devotees",
+                )
 
     def _save_photo(self, photo: UploadFile, devotee_email: str) -> str:
         """Save uploaded photo and return relative path."""
@@ -955,6 +990,50 @@ class DevoteeService:
                 detail="Failed to save photo",
             )
 
+    async def complete_devotee_profile(
+        self,
+        user_id: int,
+        profile_data: dict,
+        photo: Optional[UploadFile] = None,
+    ) -> bool:
+        """Complete devotee profile after email verification."""
+        devotee = self.get_devotee_by_id(self.db, user_id)
+        if not devotee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Devotee not found",
+            )
 
-# Global service instance
-devotee_service = DevoteeService()
+        # Check if email is verified
+        if getattr(devotee, "email_verified", False) is not True:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email must be verified before completing profile",
+            )
+
+        try:
+            # Update devotee with profile data
+            for field, value in profile_data.items():
+                if hasattr(devotee, field):
+                    setattr(devotee, field, value)
+
+            # Handle photo upload
+            if photo:
+                photo_path = self._save_photo(photo, devotee.email)
+                devotee.photo = photo_path
+
+            self.db.commit()
+            logger.info(f"Completed profile for devotee: {devotee.email}")
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to complete devotee profile: {e!s}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to complete profile",
+            ) from None
+
+
+# Note: Global service instance removed due to db session requirement
+# Use DevoteeService(db) in each endpoint instead

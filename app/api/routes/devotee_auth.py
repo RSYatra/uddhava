@@ -29,6 +29,7 @@ from app.core.auth_security import (
     input_validator,
     token_manager,
 )
+from app.core.config import settings
 from app.core.security import create_access_token
 from app.db.models import User
 from app.db.session import SessionLocal
@@ -99,10 +100,8 @@ async def devotee_signup(
             password=password,
         )
 
-        service = DevoteeService()
-        devotee = await service.create_simple_unverified_devotee(
-            db, validated_devotee_data
-        )
+        service = DevoteeService(db)
+        devotee = await service.create_simple_unverified_devotee(validated_devotee_data)
 
         logger.info(f"Simplified devotee signup successful for email: {email}")
         return SignupResponse(
@@ -407,7 +406,11 @@ async def devotee_login(
         )
 
         logger.info(f"Devotee login successful for email: {email}")
-        return Token(access_token=access_token, token_type="bearer")  # nosec B106
+        return Token(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=settings.jwt_access_token_expire_minutes * 60,
+        )  # nosec B106
 
     except HTTPException:
         raise
@@ -442,21 +445,22 @@ async def verify_devotee_email(
     - Prevention of token reuse
     """
     try:
+        logger.info(f"Starting email verification for token: {request.token[:8]}...")
+
         # Validate token format to prevent injection attacks
         if not token_manager.validate_token_format(request.token):
+            logger.warning("Token format validation failed")
             raise error_handler.safe_error_response("token_invalid")
 
         service = DevoteeService(db)
-
-        success = await service.verify_devotee_email(request.token)
-        if not success:
-            raise error_handler.safe_error_response("token_invalid")
+        verified_email = await service.verify_devotee_email(request.token)
 
         logger.info(
             f"Devotee email verification successful for token: {request.token[:8]}..."
         )
         return EmailVerificationResponse(
             message="Email verified successfully. You can now login to your account.",
+            email=verified_email,
             verified=True,
         )
 
