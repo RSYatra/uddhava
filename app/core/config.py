@@ -65,14 +65,14 @@ class Settings(BaseSettings):
 
     # Password Reset
     password_reset_token_expire_hours: int = 1
-    password_reset_url_base: str = "http://localhost:3000/reset-password"
+    password_reset_url_base: str = "https://rsyatra.com/reset-password"
 
     # Email Verification
     email_verification_token_expire_hours: int = 24
-    email_verification_url_base: str = "http://localhost:3000/verify-email"
+    email_verification_url_base: str = "https://rsyatra.com/verify-email"
 
     # Frontend URLs
-    frontend_login_url: str = "http://localhost:3000/login"
+    frontend_login_url: str = "https://rsyatra.com/login"
 
     @field_validator("jwt_secret_key")
     def validate_jwt_secret(cls, v):
