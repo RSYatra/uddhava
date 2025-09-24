@@ -33,8 +33,9 @@ from app.core.auth_security import (
 )
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.db.models import Devotee, User
+from app.db.models import Devotee
 from app.db.session import SessionLocal
+from app.schemas.auth import Token
 from app.schemas.devotee import (
     DevoteeSimpleCreate,
 )
@@ -51,12 +52,11 @@ from app.schemas.password_reset import (
     ResetPasswordRequest,
     ResetPasswordResponse,
 )
-from app.schemas.user import Token
 from app.services.devotee_service import DevoteeService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/devotees/auth", tags=["Devotee Authentication"])
+router = APIRouter(prefix="/auth", tags=["Devotee Authentication"])
 
 
 def get_db():
@@ -144,11 +144,11 @@ async def devotee_signup(
         # Validate and sanitize inputs from the incoming data
         email = input_validator.validate_email(devotee_data.email)
         password = input_validator.validate_password(devotee_data.password)
-        name = input_validator.sanitize_string(devotee_data.name, 127)
+        legal_name = input_validator.sanitize_string(devotee_data.legal_name, 127)
 
         # Create validated devotee data
         validated_devotee_data = DevoteeSimpleCreate(
-            name=name,
+            legal_name=legal_name,
             email=email,
             password=password,
         )
@@ -688,7 +688,7 @@ async def admin_reset_devotee_password(
     devotee_id: int,
     new_password: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Devotee = Depends(get_current_user),
 ) -> Dict[str, str]:
     """
     Admin endpoint to reset any devotee's password.

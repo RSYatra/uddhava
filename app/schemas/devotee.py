@@ -164,7 +164,7 @@ class DevoteeSimpleCreate(BaseModel):
     """Schema for simplified devotee signup with minimal required fields."""
 
     # Basic required fields for signup
-    name: str = Field(..., min_length=1, max_length=127, description="Full name")
+    legal_name: str = Field(..., min_length=1, max_length=127, description="Full name")
     email: EmailStr = Field(..., description="Email address")
     password: str = Field(
         ...,

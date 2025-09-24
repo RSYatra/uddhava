@@ -17,9 +17,9 @@ from app.core.auth_decorators import admin_only_endpoint
 from app.core.config import settings
 from app.core.monitoring import get_comprehensive_metrics
 from app.core.security import get_current_user
-from app.db.models import User
+from app.db.models import Devotee
 from app.db.session import SessionLocal, engine
-from app.schemas.user import HealthResponse
+from app.schemas.health import HealthResponse
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def liveness_check():
 
 @router.get("/metrics", summary="Application Metrics")
 @admin_only_endpoint
-def get_metrics(current_user: User = Depends(get_current_user)):
+def get_metrics(current_user: Devotee = Depends(get_current_user)):
     """
     Get comprehensive application metrics for monitoring.
 
@@ -136,7 +136,7 @@ if not settings.is_production:
     @router.get("/debug/db", summary="Database Debug Information")
     @admin_only_endpoint
     def debug_database_info(
-        current_user: User = Depends(get_current_user),
+        current_user: Devotee = Depends(get_current_user),
         db: Session = Depends(get_db),
     ):
         """

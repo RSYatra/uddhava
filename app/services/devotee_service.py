@@ -481,7 +481,7 @@ class DevoteeService:
             email=devotee_data.email.lower(),
             password_hash=get_password_hash(devotee_data.password),
             # Minimal profile information
-            legal_name=devotee_data.name.strip(),
+            legal_name=devotee_data.legal_name.strip(),
             # Verification fields
             email_verified=False,
             verification_token=verification_token,
