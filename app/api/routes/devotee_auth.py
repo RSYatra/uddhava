@@ -19,6 +19,8 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -31,7 +33,7 @@ from app.core.auth_security import (
 )
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.db.models import User
+from app.db.models import Devotee, User
 from app.db.session import SessionLocal
 from app.schemas.devotee import (
     DevoteeSimpleCreate,
@@ -64,6 +66,57 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_current_devotee(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    db: Session = Depends(get_db),
+):
+    """
+    Dependency to get the current authenticated devotee from JWT token.
+
+    Args:
+        credentials: HTTP Bearer authorization credentials
+        db: Database session
+
+    Returns:
+        Current authenticated devotee
+
+    Raises:
+        HTTPException: If token is invalid or devotee not found
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        # Extract and verify token
+        token = credentials.credentials
+        payload = jwt.decode(
+            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+        )
+
+        if payload is None:
+            raise credentials_exception
+
+        # For devotee tokens, 'sub' contains devotee.id and role should be 'devotee'
+        devotee_id: str = payload.get("sub")
+        role: str = payload.get("role")
+
+        if devotee_id is None or role != "devotee":
+            raise credentials_exception
+
+        # Get devotee from database by ID
+        devotee = db.query(Devotee).filter(Devotee.id == int(devotee_id)).first()
+        if devotee is None:
+            raise credentials_exception
+
+        return devotee
+
+    except (JWTError, ValueError):
+        raise credentials_exception from None
 
 
 @router.post("/signup", response_model=SignupResponse)
@@ -165,7 +218,7 @@ async def complete_devotee_profile(
     # Photo upload
     photo: UploadFile = File(None),
     # Authentication and database dependencies
-    current_user: User = Depends(get_current_user),
+    current_devotee: Devotee = Depends(get_current_devotee),
     db: Session = Depends(get_db),
 ):
     """
@@ -181,8 +234,8 @@ async def complete_devotee_profile(
     - Users can only complete their own profile
     """
     try:
-        # Get the authenticated user's ID
-        user_id = current_user.id
+        # Get the authenticated devotee's ID
+        user_id = current_devotee.id
 
         # Validate and sanitize inputs
         father_name = input_validator.sanitize_string(father_name, 127)
