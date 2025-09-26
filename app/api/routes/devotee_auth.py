@@ -12,11 +12,9 @@ from typing import Dict
 from fastapi import (
     APIRouter,
     Depends,
-    File,
     Form,
     HTTPException,
     Request,
-    UploadFile,
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -215,8 +213,6 @@ async def complete_devotee_profile(
     chanting_16_rounds_since: str = Form(None),
     # Education
     devotional_courses: str = Form(None),
-    # Photo upload
-    photo: UploadFile = File(None),
     # Authentication and database dependencies
     current_devotee: Devotee = Depends(get_current_devotee),
     db: Session = Depends(get_db),
@@ -320,32 +316,59 @@ async def complete_devotee_profile(
                 detail=f"Chanting rounds must be between 0 and {MAX_CHANTING_ROUNDS}",
             )
 
-        # Parse dates
-        parsed_date_of_birth = (
-            datetime.strptime(date_of_birth, "%Y-%m-%d").date()
-            if date_of_birth
-            else None
+        # Parse dates with proper error handling
+        def parse_date_safely(date_str: str, field_name: str):
+            """Parse date string safely with descriptive error message."""
+            if not date_str or date_str.lower() in [
+                "string",
+                "null",
+                "none",
+                "",
+            ]:
+                return None
+            try:
+                return datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid date format for {field_name}. \
+                    Expected YYYY-MM-DD, got: {date_str}",
+                )
+
+        # Validate required date_of_birth first
+        if not date_of_birth or date_of_birth.lower() in [
+            "string",
+            "null",
+            "none",
+            "",
+        ]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="date_of_birth is required and must be in YYYY-MM-DD format",
+            )
+        parsed_date_of_birth = parse_date_safely(date_of_birth, "date_of_birth")
+        parsed_date_of_marriage = parse_date_safely(
+            date_of_marriage, "date_of_marriage"
         )
-        parsed_date_of_marriage = (
-            datetime.strptime(date_of_marriage, "%Y-%m-%d").date()
-            if date_of_marriage
-            else None
+        parsed_initiation_date = parse_date_safely(initiation_date, "initiation_date")
+        parsed_chanting_since = parse_date_safely(
+            chanting_16_rounds_since, "chanting_16_rounds_since"
         )
-        parsed_initiation_date = (
-            datetime.strptime(initiation_date, "%Y-%m-%d").date()
-            if initiation_date
-            else None
-        )
-        parsed_introduced_date = (
-            datetime.strptime(when_were_you_introduced_to_iskcon, "%Y-%m-%d").date()
-            if when_were_you_introduced_to_iskcon
-            else None
-        )
-        parsed_chanting_since = (
-            datetime.strptime(chanting_16_rounds_since, "%Y-%m-%d").date()
-            if chanting_16_rounds_since
-            else None
-        )
+
+        # For ISKCON introduction, treat as text if not a valid date
+        parsed_introduced_date = None
+        if (
+            when_were_you_introduced_to_iskcon
+            and when_were_you_introduced_to_iskcon.lower()
+            not in ["string", "null", "none", ""]
+        ):
+            try:
+                parsed_introduced_date = datetime.strptime(
+                    when_were_you_introduced_to_iskcon, "%Y-%m-%d"
+                ).date()
+            except ValueError:
+                # Keep as text in the original field, don't convert to date
+                pass
 
         service = DevoteeService(db)
 
@@ -382,7 +405,7 @@ async def complete_devotee_profile(
         }
 
         # Complete the profile using the authenticated user's ID
-        success = await service.complete_devotee_profile(user_id, profile_data, photo)
+        success = await service.complete_devotee_profile(user_id, profile_data)
 
         if success:
             logger.info(f"Profile completed successfully for user {user_id}")

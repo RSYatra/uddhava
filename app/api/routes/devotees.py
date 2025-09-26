@@ -12,10 +12,8 @@ from typing import List, Optional
 from fastapi import (
     APIRouter,
     Depends,
-    File,
     HTTPException,
     Query,
-    UploadFile,
     status,
 )
 from sqlalchemy.exc import SQLAlchemyError
@@ -192,7 +190,6 @@ async def get_devotees(
 @admin_only_endpoint
 async def create_devotee(
     devotee_data: DevoteeCreate,
-    photo: Optional[UploadFile] = File(None, description="Optional profile photo"),
     db: Session = Depends(get_db),
     current_user: Devotee = Depends(get_current_user),
 ):
@@ -227,7 +224,7 @@ async def create_devotee(
     """
     try:
         service = DevoteeService(db)
-        devotee = service.create_devotee(db, devotee_data, photo)
+        devotee = service.create_devotee(db, devotee_data)
         logger.info(f"Created new devotee: {devotee.email}")
         return devotee
 
@@ -300,7 +297,6 @@ async def get_devotee(
 async def update_devotee(
     devotee_id: int,
     devotee_update: DevoteeUpdate,
-    photo: Optional[UploadFile] = File(None, description="Optional new profile photo"),
     db: Session = Depends(get_db),
     current_user: Devotee = Depends(get_current_user),
 ):
@@ -333,7 +329,7 @@ async def update_devotee(
     """
     try:
         service = DevoteeService(db)
-        devotee = service.update_devotee(db, devotee_id, devotee_update, photo)
+        devotee = service.update_devotee(db, devotee_id, devotee_update)
         if not devotee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
