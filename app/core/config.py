@@ -8,6 +8,7 @@ provides validation, and sets up proper defaults for different environments.
 import warnings
 from functools import lru_cache
 from typing import Optional
+from urllib.parse import quote_plus
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -98,8 +99,6 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Construct database URL with proper URL encoding for special characters."""
-        from urllib.parse import quote_plus
-
         # URL encode the password to handle special characters like @
         encoded_pwd = quote_plus(self.db_password)  # Not a hardcoded password
         encoded_user = quote_plus(self.db_user)

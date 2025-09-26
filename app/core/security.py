@@ -5,7 +5,8 @@ This module provides secure authentication functions using bcrypt for password
 hashing and JWT for token-based authentication.
 """
 
-from datetime import datetime, timedelta
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -15,6 +16,7 @@ from passlib.context import CryptContext  # type: ignore
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models import Devotee, UserRole
 from app.db.session import get_db
 
 # Password hashing context
@@ -132,7 +134,6 @@ def get_current_user(
     Raises:
         HTTPException: If token is invalid or devotee not found
     """
-    from app.db.models import Devotee
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -188,8 +189,6 @@ def get_current_admin_user(
     Raises:
         HTTPException: If token is invalid, devotee not found, or not admin
     """
-    from app.db.models import UserRole
-
     current_devotee = get_current_user(credentials, db)
 
     if current_devotee.role != UserRole.ADMIN:
@@ -219,15 +218,6 @@ def create_devotee_token(devotee, expires_delta: Optional[timedelta] = None) -> 
         "devotee_role": devotee.role.value,  # Actual admin/user role
     }
     return create_access_token(data, expires_delta)
-
-
-# Backward compatibility alias
-def create_user_token(user, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Legacy function for backward compatibility.
-    Use create_devotee_token for new code.
-    """
-    return create_devotee_token(user, expires_delta)
 
 
 def verify_user_token(token: str):
@@ -262,7 +252,6 @@ def check_devotee_access(current_devotee, target_devotee_id: int) -> bool:
     Returns:
         True if access allowed, False otherwise
     """
-    from app.db.models import UserRole
 
     # Admin can access anyone
     if current_devotee.role == UserRole.ADMIN:
@@ -270,15 +259,6 @@ def check_devotee_access(current_devotee, target_devotee_id: int) -> bool:
 
     # Devotees can only access their own data
     return current_devotee.id == target_devotee_id
-
-
-# Backward compatibility alias
-def check_user_access(current_user, target_user_id: int) -> bool:
-    """
-    Legacy function for backward compatibility.
-    Use check_devotee_access for new code.
-    """
-    return check_devotee_access(current_user, target_user_id)
 
 
 def generate_password_reset_token(email: str) -> str:
@@ -291,8 +271,6 @@ def generate_password_reset_token(email: str) -> str:
     Returns:
         Password reset token
     """
-    import secrets
-    from datetime import datetime, timezone
 
     # Create token data
     token_data = {
@@ -342,8 +320,6 @@ def is_token_expired(user) -> bool:
     """
     if not user.password_reset_expires:
         return True
-
-    from datetime import datetime, timezone
 
     return user.password_reset_expires <= datetime.now(timezone.utc)
 

@@ -118,9 +118,8 @@ def require_owner_or_admin(user_id_param: str = "user_id"):
                 )
 
             # Check if user is admin or owns the resource
-            if (
-                current_user.role != UserRole.ADMIN
-                and current_user.id != target_user_id
+            if current_user.role.isnot(UserRole.ADMIN) and current_user.id.isnot(
+                target_user_id
             ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
