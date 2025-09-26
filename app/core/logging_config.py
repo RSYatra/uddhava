@@ -8,6 +8,7 @@ handlers, and configuration for different environments.
 import logging
 import logging.config
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -171,15 +172,11 @@ class LogExecutionTime:
         self.start_time = None
 
     def __enter__(self):
-        import time
-
         self.start_time = time.time()
         self.logger.log(self.level, f"Starting {self.operation}")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        import time
-
         duration = time.time() - self.start_time
         if exc_type:
             self.logger.error(

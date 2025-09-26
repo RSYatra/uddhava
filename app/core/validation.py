@@ -5,6 +5,8 @@ This module provides enhanced validation for API requests,
 including custom validators, input sanitization, and security checks.
 """
 
+import json
+import logging
 import re
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -12,6 +14,9 @@ from urllib.parse import urlparse
 from fastapi import HTTPException, status
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_core import ValidationError
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ValidationUtils:
@@ -167,7 +172,7 @@ class FileUploadValidation:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"File too large. Maximum size: "
-                    f"{FileUploadValidation.MAX_FILE_SIZE // (1024*1024)}MB"
+                    f"{FileUploadValidation.MAX_FILE_SIZE // (1024 * 1024)}MB"
                 ),
             )
 
@@ -188,7 +193,7 @@ class FileUploadValidation:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"File too large. Maximum size: "
-                    f"{FileUploadValidation.MAX_FILE_SIZE // (1024*1024)}MB"
+                    f"{FileUploadValidation.MAX_FILE_SIZE // (1024 * 1024)}MB"
                 ),
             )
 
@@ -209,7 +214,6 @@ def validate_json_request(
     Raises:
         HTTPException: If validation fails
     """
-    import json
 
     # Check size
     json_str = json.dumps(data)
@@ -257,7 +261,6 @@ class APIErrorHandler:
     @staticmethod
     def handle_database_error(error: Exception) -> HTTPException:
         """Handle database-related errors."""
-        import logging
 
         logger = logging.getLogger("app.api")
         logger.error(f"Database error: {error}")
