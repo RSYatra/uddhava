@@ -27,8 +27,9 @@ from app.core.auth_security import (
     token_manager,
 )
 from app.core.config import settings
-from app.core.security import create_access_token, get_current_user
-from app.db.models import Devotee, UserRole
+from app.core.dependencies import require_admin
+from app.core.security import create_access_token
+from app.db.models import Devotee
 from app.db.session import SessionLocal
 from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.devotee import (
@@ -2122,13 +2123,12 @@ Reset any devotee's password (admin only).
             },
         },
     },
-    tags=["Admin Operations"],
 )
 async def admin_reset_devotee_password(
     request_obj: Request,
     request: AdminResetPasswordRequest,
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Admin endpoint to reset any devotee's password.
@@ -2136,20 +2136,11 @@ async def admin_reset_devotee_password(
     See the detailed description and response examples above for all scenarios.
     """
     try:
-        # Check admin role
-        if current_user.role != UserRole.ADMIN:
-            return AdminResetPasswordResponse(
-                success=False,
-                status_code=status.HTTP_403_FORBIDDEN,
-                message="Admin access required",
-                data=None,
-            )
-
         # Validate password strength (Pydantic validator already called)
         new_password = input_validator.validate_password(request.new_password)
 
         service = DevoteeService(db)
-        success = service.admin_reset_password(request.devotee_id, new_password, current_user.id)
+        success = service.admin_reset_password(request.devotee_id, new_password, admin.id)
 
         if not success:
             return AdminResetPasswordResponse(
@@ -2160,8 +2151,7 @@ async def admin_reset_devotee_password(
             )
 
         logger.info(
-            f"Admin {current_user.id} ({current_user.email}) "
-            f"reset password for devotee {request.devotee_id}"
+            f"Admin {admin.id} ({admin.email}) reset password for devotee {request.devotee_id}"
         )
         return AdminResetPasswordResponse(
             success=True,
@@ -2169,7 +2159,7 @@ async def admin_reset_devotee_password(
             message="Password reset successful by admin",
             data={
                 "devotee_id": request.devotee_id,
-                "admin_id": current_user.id,
+                "admin_id": admin.id,
             },
         )
 

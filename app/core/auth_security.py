@@ -382,48 +382,6 @@ class SecureTokenManager:
         return True
 
 
-class ErrorHandler:
-    """Handles secure error responses that don't leak sensitive information."""
-
-    @staticmethod
-    def safe_error_response(error_type: str, detail: str = None) -> HTTPException:
-        """Generate safe error response without information leakage."""
-        safe_messages = {
-            "auth_failed": "Invalid credentials",
-            "user_not_found": "Invalid credentials",  # Don't reveal user existence
-            "token_invalid": "Invalid or expired token",
-            "token_expired": "Token has expired",
-            "rate_limited": "Too many requests. Please try again later.",
-            "validation_failed": "Invalid input provided",
-            "server_error": "An error occurred. Please try again later.",
-            "forbidden": "Access denied",
-            "not_found": "Resource not found",
-        }
-
-        safe_detail = safe_messages.get(error_type, "An error occurred")
-
-        status_codes = {
-            "auth_failed": status.HTTP_401_UNAUTHORIZED,
-            "user_not_found": status.HTTP_401_UNAUTHORIZED,
-            "token_invalid": status.HTTP_401_UNAUTHORIZED,
-            "token_expired": status.HTTP_401_UNAUTHORIZED,
-            "rate_limited": status.HTTP_429_TOO_MANY_REQUESTS,
-            "validation_failed": status.HTTP_400_BAD_REQUEST,
-            "server_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "forbidden": status.HTTP_403_FORBIDDEN,
-            "not_found": status.HTTP_404_NOT_FOUND,
-        }
-
-        status_code = status_codes.get(error_type, status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Log the actual error for debugging but don't expose it
-        if detail:
-            logger.error(f"Error ({error_type}): {detail}")
-
-        return HTTPException(status_code=status_code, detail=safe_detail)
-
-
 # Global instances
 input_validator = InputValidator()
 token_manager = SecureTokenManager()
-error_handler = ErrorHandler()
