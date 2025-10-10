@@ -14,16 +14,6 @@ from app.core.password_validation import validate_password_strength
 from app.db.models import Gender, InitiationStatus, MaritalStatus, UserRole
 
 
-class ChildInfo(BaseModel):
-    """Schema for child information."""
-
-    name: str = Field(..., min_length=1, max_length=127)
-    date_of_birth: date | None = None
-    gender: Gender | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class DevoteeBase(BaseModel):
     """Base devotee model with common fields."""
 
@@ -186,7 +176,7 @@ class DevoteeCreate(DevoteeBase):
         max_length=128,
         description="Password: min 8 chars, uppercase, lowercase, number, special char",
     )
-    children: list[ChildInfo] | None = Field(None, description="List of children information")
+    children: list[dict[str, Any]] | None = Field(None, description="List of children information")
 
     @field_validator("password")
     @classmethod
@@ -214,7 +204,7 @@ class DevoteeUpdate(BaseModel):
     mother_name: str | None = Field(None, min_length=1, max_length=127)
     spouse_name: str | None = Field(None, max_length=127)
     date_of_marriage: date | None = None
-    children: list[ChildInfo] | None = None
+    children: list[dict[str, Any]] | None = None
 
     # Location Information
     address: str | None = None
@@ -277,13 +267,6 @@ class DevoteeOut(DevoteeBase):
     )
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class DevoteeLogin(BaseModel):
-    """Schema for devotee login."""
-
-    email: EmailStr = Field(..., description="Devotee's email address")
-    password: str = Field(..., min_length=1, max_length=128, description="Devotee's password")
 
 
 class DevoteeSearchFilters(BaseModel):

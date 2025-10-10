@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verified Successfully</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: #ffffff;
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .header .subtitle {
+            margin: 10px 0 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px 30px;
+        }
+
+        .success-badge {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .success-badge .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .success-badge h2 {
+            color: #11998e;
+            font-size: 26px;
+            margin: 0 0 10px 0;
+        }
+
+        .success-badge p {
+            color: #666;
+            font-size: 16px;
+            margin: 0;
+        }
+
+        .greeting {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .message {
+            color: #555;
+            margin-bottom: 30px;
+            font-size: 15px;
+        }
+
+        .success-box {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 25px;
+            border-radius: 8px;
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .success-box p {
+            margin: 0;
+            color: #333;
+            font-size: 15px;
+        }
+
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 14px 40px;
+            border-radius: 5px;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 4px 6px rgba(17, 153, 142, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(17, 153, 142, 0.4);
+        }
+
+        .next-steps {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 5px;
+        }
+
+        .next-steps h3 {
+            color: #1976D2;
+            margin-top: 0;
+            font-size: 18px;
+        }
+
+        .next-steps ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
+        }
+
+        .next-steps li {
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .footer {
+            background-color: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .footer p {
+            margin: 5px 0;
+            font-size: 13px;
+            color: #6c757d;
+        }
+
+        .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #e0e0e0, transparent);
+            margin: 30px 0;
+        }
+
+        .highlight-box {
+            background-color: #fff9e6;
+            border: 2px dashed #ffc107;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .highlight-box p {
+            margin: 0;
+            color: #856404;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1>✅ Email Verified Successfully!</h1>
+            <p class="subtitle">Radha Shyam Sundar Seva</p>
+        </div>
+
+        <div class="content">
+            <div class="success-badge">
+                <div class="icon">🎉</div>
+                <h2>Congratulations!</h2>
+                <p>Your email has been successfully verified</p>
+            </div>
+
+            <div class="greeting">
+                Hello {% if user_name %}{{ user_name }}{% else %}there{% endif %},
+            </div>
+
+            <div class="message">
+                <p>Great news! Your email address <strong>{{ email }}</strong> has been successfully verified.</p>
+                <p>Your account is now fully activated and ready to use!</p>
+            </div>
+
+            <div class="success-box">
+                <p>✓ You can now access all features of your account</p>
+            </div>
+
+            <div class="button-container">
+                <a href="{{ login_url }}" class="btn">Login to Your Account</a>
+            </div>
+
+            <div class="next-steps">
+                <h3>🚀 Next Steps:</h3>
+                <ul>
+                    <li><strong>Complete Your Profile:</strong> Add more details to personalize your experience</li>
+                    <li><strong>Explore Features:</strong> Discover what you can do with your account</li>
+                    <li><strong>Stay Connected:</strong> Keep your account information up to date</li>
+                    <li><strong>Get Support:</strong> Our team is here to help if you need anything</li>
+                </ul>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="highlight-box">
+                <p>💡 Tip: Bookmark your login page for quick access!</p>
+            </div>
+
+            <p style="color: #666; font-size: 14px; margin-top: 30px;">
+                If you have any questions or need assistance, our support team is always ready to help.
+            </p>
+
+            <p style="color: #333; margin-top: 30px;">
+                Welcome aboard!<br>
+                <strong>The Uddhava Team</strong>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>&copy; 2025 Radha Shyam Sundar Seva. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>

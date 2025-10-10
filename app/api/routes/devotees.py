@@ -18,20 +18,21 @@ from fastapi import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.auth_decorators import (
-    admin_only_endpoint,
-    owner_or_admin_endpoint,
-)
+from app.core.dependencies import check_resource_access, require_admin
 from app.core.security import get_current_user
-from app.db.models import Devotee, Gender, InitiationStatus, MaritalStatus
+from app.db.models import Devotee, Gender, InitiationStatus, MaritalStatus, UserRole
 from app.db.session import SessionLocal
 from app.schemas.devotee import (
     DevoteeCreate,
-    DevoteeListResponse,
-    DevoteeOut,
     DevoteeSearchFilters,
-    DevoteeStatsResponse,
     DevoteeUpdate,
+)
+from app.schemas.devotee_responses import (
+    StandardDevoteeListResponse,
+    StandardDevoteeResponse,
+    StandardDevoteeStatsResponse,
+    StandardSearchResponse,
+    StandardValidationResponse,
 )
 
 # NOTE: Using service class directly with per-request instantiation
@@ -63,10 +64,9 @@ def get_db():
 
 @router.get(
     "/",
-    response_model=DevoteeListResponse,
+    response_model=StandardDevoteeListResponse,
     summary="List Devotees with Advanced Filtering",
 )
-@admin_only_endpoint
 async def get_devotees(
     # Text search
     search: str | None = Query(
@@ -111,7 +111,7 @@ async def get_devotees(
     ),
     # Dependencies
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Retrieve devotees with comprehensive filtering, search, and pagination.
@@ -162,7 +162,12 @@ async def get_devotees(
         result = service.get_devotees_with_filters(db, filters)
 
         logger.info(f"Retrieved {len(result.devotees)} devotees with filters")
-        return result
+        return StandardDevoteeListResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Devotees retrieved successfully",
+            data=result,
+        )
 
     except ValueError as e:
         raise HTTPException(
@@ -177,12 +182,11 @@ async def get_devotees(
         )
 
 
-@router.post("/", response_model=DevoteeOut, summary="Create New Devotee")
-@admin_only_endpoint
+@router.post("/", response_model=StandardDevoteeResponse, summary="Create New Devotee")
 async def create_devotee(
     devotee_data: DevoteeCreate,
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Create a new devotee with comprehensive information.
@@ -217,7 +221,12 @@ async def create_devotee(
         service = DevoteeService(db)
         devotee = service.create_devotee(db, devotee_data)
         logger.info(f"Created new devotee: {devotee.email}")
-        return devotee
+        return StandardDevoteeResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Devotee created successfully",
+            data=devotee,
+        )
 
     except HTTPException:
         raise
@@ -234,8 +243,7 @@ async def create_devotee(
         )
 
 
-@router.get("/{devotee_id}", response_model=DevoteeOut, summary="Get Devotee by ID")
-@owner_or_admin_endpoint("devotee_id")
+@router.get("/{devotee_id}", response_model=StandardDevoteeResponse, summary="Get Devotee by ID")
 async def get_devotee(
     devotee_id: int,
     db: Session = Depends(get_db),
@@ -262,6 +270,7 @@ async def get_devotee(
     - Children details protected
     """
     try:
+        check_resource_access(current_user, devotee_id, "devotee profile")
         service = DevoteeService(db)
         devotee = service.get_devotee_by_id(db, devotee_id)
         if not devotee:
@@ -271,7 +280,12 @@ async def get_devotee(
             )
 
         logger.info(f"Retrieved devotee profile: {devotee_id}")
-        return devotee
+        return StandardDevoteeResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Devotee retrieved successfully",
+            data=devotee,
+        )
 
     except HTTPException:
         raise
@@ -283,8 +297,7 @@ async def get_devotee(
         )
 
 
-@router.put("/{devotee_id}", response_model=DevoteeOut, summary="Update Devotee")
-@owner_or_admin_endpoint("devotee_id")
+@router.put("/{devotee_id}", response_model=StandardDevoteeResponse, summary="Update Devotee")
 async def update_devotee(
     devotee_id: int,
     devotee_update: DevoteeUpdate,
@@ -318,6 +331,12 @@ async def update_devotee(
     - Timestamp updates on modifications
     - Version history (future enhancement)
     """
+    # Check access: admin or owner
+    if current_user.role != UserRole.ADMIN and current_user.id != devotee_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You can only update your own profile or need admin privileges",
+        )
     try:
         service = DevoteeService(db)
         devotee = service.update_devotee(db, devotee_id, devotee_update)
@@ -328,7 +347,12 @@ async def update_devotee(
             )
 
         logger.info(f"Updated devotee: {devotee_id}")
-        return devotee
+        return StandardDevoteeResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Devotee updated successfully",
+            data=devotee,
+        )
 
     except HTTPException:
         raise
@@ -345,13 +369,12 @@ async def update_devotee(
         )
 
 
-@router.get("/search/text", response_model=list[DevoteeOut], summary="Fast Text Search")
-@admin_only_endpoint
+@router.get("/search/text", response_model=StandardSearchResponse, summary="Fast Text Search")
 async def search_devotees_text(
     q: str = Query(..., min_length=2, max_length=100, description="Search query"),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Perform fast text search across devotee information.
@@ -384,7 +407,12 @@ async def search_devotees_text(
         service = DevoteeService(db)
         devotees = service.search_devotees_by_text(db, q.strip(), limit)
         logger.info(f"Text search for '{q}' returned {len(devotees)} results")
-        return devotees
+        return StandardSearchResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Search completed successfully",
+            data=devotees,
+        )
 
     except HTTPException:
         raise
@@ -398,16 +426,15 @@ async def search_devotees_text(
 
 @router.get(
     "/location/{country}",
-    response_model=list[DevoteeOut],
+    response_model=StandardSearchResponse,
     summary="Get Devotees by Location",
 )
-@admin_only_endpoint
 async def get_devotees_by_location(
     country: str,
     state: str | None = Query(None, description="State or province"),
     city: str | None = Query(None, description="City name"),
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Get devotees filtered by geographic location.
@@ -438,7 +465,12 @@ async def get_devotees_by_location(
         location_desc += country
 
         logger.info(f"Retrieved {len(devotees)} devotees from {location_desc}")
-        return devotees
+        return StandardSearchResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Devotees retrieved successfully",
+            data=devotees,
+        )
 
     except SQLAlchemyError:
         logger.exception("Error retrieving devotees by location")
@@ -450,14 +482,13 @@ async def get_devotees_by_location(
 
 @router.get(
     "/spiritual-master/{master_name}",
-    response_model=list[DevoteeOut],
+    response_model=StandardSearchResponse,
     summary="Get Devotees by Spiritual Master",
 )
-@admin_only_endpoint
 async def get_devotees_by_spiritual_master(
     master_name: str,
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Get all devotees of a specific spiritual master.
@@ -490,13 +521,12 @@ async def get_devotees_by_spiritual_master(
 
 @router.get(
     "/statistics/overview",
-    response_model=DevoteeStatsResponse,
+    response_model=StandardDevoteeStatsResponse,
     summary="Get Devotee Statistics",
 )
-@admin_only_endpoint
 async def get_devotee_statistics(
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Get comprehensive devotee statistics and analytics.
@@ -526,7 +556,12 @@ async def get_devotee_statistics(
 
         stats = service.get_devotee_statistics(db)
         logger.info("Retrieved devotee statistics")
-        return stats
+        return StandardDevoteeStatsResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Statistics retrieved successfully",
+            data=stats,
+        )
 
     except SQLAlchemyError:
         logger.exception("Error retrieving devotee statistics")
@@ -537,7 +572,6 @@ async def get_devotee_statistics(
 
 
 @router.get("/{devotee_id}/photo", summary="Get Devotee Photo")
-@owner_or_admin_endpoint("devotee_id")
 async def get_devotee_photo(
     devotee_id: int,
     db: Session = Depends(get_db),
@@ -562,6 +596,7 @@ async def get_devotee_photo(
     - File existence validation
     """
     try:
+        check_resource_access(current_user, devotee_id, "devotee profile")
         service = DevoteeService(db)
 
         devotee = service.get_devotee_by_id(db, devotee_id)
@@ -589,10 +624,9 @@ async def get_devotee_photo(
 
 
 @router.get("/export/csv", summary="Export Devotees to CSV")
-@admin_only_endpoint
 async def export_devotees_csv(
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Export devotee data to CSV format for admin users.
@@ -619,12 +653,15 @@ async def export_devotees_csv(
     )
 
 
-@router.get("/validate/email/{email}", summary="Validate Email Availability")
-@admin_only_endpoint
+@router.get(
+    "/validate/email/{email}",
+    response_model=StandardValidationResponse,
+    summary="Validate Email Availability",
+)
 async def validate_email_availability(
     email: str,
     db: Session = Depends(get_db),
-    current_user: Devotee = Depends(get_current_user),
+    admin: Devotee = Depends(require_admin),
 ):
     """
     Check if email address is available for registration.
@@ -647,13 +684,16 @@ async def validate_email_availability(
         service = DevoteeService(db)
 
         existing_devotee = service.get_devotee_by_email(db, email)
-        return {
-            "email": email,
-            "available": existing_devotee is None,
-            "message": (
-                "Email is available" if existing_devotee is None else "Email already registered"
-            ),
-        }
+        is_available = existing_devotee is None
+        return StandardValidationResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Email is available" if is_available else "Email already registered",
+            data={
+                "email": email,
+                "available": is_available,
+            },
+        )
 
     except SQLAlchemyError:
         logger.exception("Error validating email availability")

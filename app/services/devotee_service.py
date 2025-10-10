@@ -8,7 +8,7 @@ Designed for high performance with 100K users.
 
 import logging
 import secrets
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from math import ceil
 from pathlib import Path
 
@@ -22,7 +22,6 @@ from app.core.security import get_password_hash, verify_password
 from app.db.models import (
     Devotee,
     InitiationStatus,
-    MaritalStatus,
 )
 from app.schemas.devotee import (
     DevoteeCreate,
@@ -489,68 +488,6 @@ class DevoteeService:
                 detail="Failed to create devotee account",
             ) from None
 
-    async def create_unverified_devotee(
-        self, devotee_data: DevoteeCreate, photo: UploadFile | None = None
-    ) -> Devotee:
-        """Create an unverified devotee and send verification email."""
-        # Check if devotee already exists
-        existing_devotee = self.get_devotee_by_email(self.db, devotee_data.email)
-        if existing_devotee:
-            if getattr(existing_devotee, "email_verified", False) is True:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="A verified devotee with this email already exists",
-                )
-            # Resend verification email for unverified devotee
-            await self._send_verification_email(existing_devotee)
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Devotee exists but is not verified. Verification email sent again.",
-            )
-
-        # Generate secure verification token
-        from app.core.auth_security import token_manager
-
-        verification_token = token_manager.generate_verification_token(devotee_data.email)
-        verification_expires = datetime.now(UTC) + timedelta(hours=24)
-
-        # Create new devotee (unverified)
-        devotee_dict = devotee_data.model_dump()
-        devotee_dict.update(
-            {
-                "email_verified": False,
-                "verification_token": verification_token,
-                "verification_expires": verification_expires,
-            }
-        )
-
-        new_devotee = Devotee(**devotee_dict)
-
-        try:
-            self.db.add(new_devotee)
-            self.db.flush()  # Get the ID without committing
-
-            # Save photo if provided
-            if photo:
-                self._save_photo(photo, devotee_data.email)
-
-            # Send verification email
-            await self._send_verification_email(new_devotee)
-
-            self.db.commit()
-            self.db.refresh(new_devotee)
-
-            logger.info(f"Created unverified devotee with email: {devotee_data.email}")
-            return new_devotee
-
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to create unverified devotee: {e!s}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create devotee account",
-            )
-
     async def verify_devotee_email(self, token: str) -> str:
         """Verify devotee's email using verification token.
 
@@ -686,8 +623,8 @@ class DevoteeService:
             email_service = EmailService()
             await email_service.send_password_reset_email(
                 email=devotee.email,
-                name=devotee.legal_name,
                 reset_token=devotee.reset_token,
+                user_name=devotee.legal_name,
             )
 
             self.db.commit()
@@ -777,139 +714,6 @@ class DevoteeService:
             return None
 
         return devotee
-
-    def _apply_search_filters(self, query, filters: DevoteeSearchFilters):
-        """Apply search filters to query with optimal performance."""
-
-        # Text search across multiple fields
-        if filters.search:
-            search_pattern = f"%{filters.search.lower()}%"
-            query = query.filter(
-                or_(
-                    func.lower(Devotee.legal_name).like(search_pattern),
-                    func.lower(Devotee.email).like(search_pattern),
-                    func.lower(Devotee.city).like(search_pattern),
-                    func.lower(Devotee.country).like(search_pattern),
-                    func.lower(Devotee.spiritual_master).like(search_pattern),
-                )
-            )
-
-        # Location filters (use indexes)
-        if filters.country:
-            query = query.filter(func.lower(Devotee.country) == filters.country.lower())
-        if filters.state_province:
-            query = query.filter(
-                func.lower(Devotee.state_province) == filters.state_province.lower()
-            )
-        if filters.city:
-            query = query.filter(func.lower(Devotee.city) == filters.city.lower())
-
-        # Spiritual filters (use indexes)
-        if filters.initiation_status:
-            query = query.filter(Devotee.initiation_status == filters.initiation_status)
-        if filters.spiritual_master:
-            query = query.filter(
-                func.lower(Devotee.spiritual_master) == filters.spiritual_master.lower()
-            )
-
-        # Demographic filters
-        if filters.gender:
-            query = query.filter(Devotee.gender == filters.gender)
-        if filters.marital_status:
-            query = query.filter(Devotee.marital_status == filters.marital_status)
-
-        # Age range filters
-        if filters.min_age or filters.max_age:
-            today = date.today()
-
-            if filters.min_age:
-                max_birth_date = date(today.year - filters.min_age, today.month, today.day)
-                query = query.filter(Devotee.date_of_birth <= max_birth_date)
-
-            if filters.max_age:
-                min_birth_date = date(today.year - filters.max_age, today.month, today.day)
-                query = query.filter(Devotee.date_of_birth >= min_birth_date)
-
-        # Chanting rounds filters
-        if filters.min_rounds:
-            query = query.filter(Devotee.chanting_number_of_rounds >= filters.min_rounds)
-        if filters.max_rounds:
-            query = query.filter(Devotee.chanting_number_of_rounds <= filters.max_rounds)
-
-        return query
-
-    def _apply_sorting(self, query, sort_by: str, sort_order: str):
-        """Apply sorting to query with proper field mapping."""
-        sort_fields = {
-            "legal_name": Devotee.legal_name,
-            "created_at": Devotee.created_at,
-            "city": Devotee.city,
-            "country": Devotee.country,
-            "initiation_status": Devotee.initiation_status,
-            "chanting_rounds": Devotee.chanting_number_of_rounds,
-            "date_of_birth": Devotee.date_of_birth,
-        }
-
-        sort_field = sort_fields.get(sort_by, Devotee.created_at)
-
-        if sort_order == "desc":
-            query = query.order_by(desc(sort_field))
-        else:
-            query = query.order_by(sort_field)
-
-        return query
-
-    def _validate_devotee_data(self, devotee_data: DevoteeCreate) -> None:
-        """Validate devotee data according to business rules."""
-
-        # Marriage validation
-        if devotee_data.marital_status == MaritalStatus.MARRIED:
-            if not devotee_data.spouse_name:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Spouse name is required for married devotees",
-                )
-
-        # Initiation validation
-        if devotee_data.initiation_status in [
-            InitiationStatus.HARINAM,
-            InitiationStatus.BRAHMIN,
-        ]:
-            if not devotee_data.spiritual_master:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Spiritual master is required for initiated devotees",
-                )
-            if not devotee_data.initiation_date:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Initiation date is required for initiated devotees",
-                )
-
-    def _validate_devotee_update(
-        self, devotee_update: DevoteeUpdate, existing_devotee: Devotee
-    ) -> None:
-        """Validate devotee update data according to business rules."""
-
-        # Marriage validation for updates
-        # Only validate if explicitly setting marital status to married
-        if devotee_update.marital_status == MaritalStatus.MARRIED:
-            # Get the spouse name from update or existing record
-            spouse_name = devotee_update.spouse_name
-            if not spouse_name:
-                # Try to get from existing devotee (avoid SQLAlchemy column issues)
-                try:
-                    existing_spouse = getattr(existing_devotee, "spouse_name", None)
-                    spouse_name = existing_spouse
-                except Exception:
-                    spouse_name = None
-
-            # Check if spouse name is missing or empty
-            if not spouse_name or (isinstance(spouse_name, str) and spouse_name.strip() == ""):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Spouse name is required for married devotees",
-                )
 
     def _save_photo(self, photo: UploadFile, devotee_email: str) -> str:
         """Save uploaded photo and return relative path."""

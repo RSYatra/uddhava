@@ -5,9 +5,7 @@ This module contains all the database table definitions using SQLAlchemy ORM.
 Enhanced devotee management system for ISKCON Radha Shyam Sundar Yatra.
 """
 
-from datetime import date
 from enum import Enum
-from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -153,102 +151,6 @@ class Devotee(Base):
 
     def __repr__(self):
         return f"<Devotee(id={self.id}, email={self.email}, legal_name={self.legal_name})>"
-
-    @property
-    def is_admin(self) -> bool:
-        """Check if devotee has admin role."""
-        return self.role == UserRole.ADMIN
-
-    @property
-    def is_user(self) -> bool:
-        """Check if devotee has regular user role."""
-        return self.role == UserRole.USER
-
-    def can_access_devotee(self, devotee_id: int) -> bool:
-        """Check if devotee can access another devotee's data."""
-        return self.is_admin or self.id == devotee_id
-
-    @property
-    def full_name(self) -> str:
-        """Get devotee's full name."""
-        return self.legal_name
-
-    @property
-    def display_name(self) -> str:
-        """Get display name for UI purposes."""
-        return self.legal_name
-
-    @property
-    def location_display(self) -> str:
-        """Get formatted location string."""
-        parts = []
-        if self.city:
-            parts.append(self.city)
-        if self.state_province:
-            parts.append(self.state_province)
-        if self.country:
-            parts.append(self.country)
-        return ", ".join(parts) if parts else "Location not specified"
-
-    @property
-    def mobile_display(self) -> str:
-        """Get formatted mobile number with country code."""
-        if self.country_code and self.mobile_number:
-            return f"+{self.country_code} {self.mobile_number}"
-        return self.mobile_number or "Not provided"
-
-    @property
-    def children_count(self) -> int:
-        """Get number of children."""
-        if not self.children:
-            return 0
-        if isinstance(self.children, list):
-            return len(self.children)
-        if isinstance(self.children, dict) and "count" in self.children:
-            return self.children.get("count", 0)
-        return 0
-
-    @property
-    def spiritual_journey_years(self) -> int | None:
-        """Calculate years since introduction to ISKCON."""
-        if not self.when_were_you_introduced_to_iskcon:
-            return None
-        today = date.today()
-        return today.year - self.when_were_you_introduced_to_iskcon.year
-
-    @property
-    def is_initiated(self) -> bool:
-        """Check if devotee is initiated (Harinam or Brahmin)."""
-        return self.initiation_status in [
-            InitiationStatus.HARINAM,
-            InitiationStatus.BRAHMIN,
-        ]
-
-    @property
-    def is_brahmin_initiated(self) -> bool:
-        """Check if devotee has Brahmin initiation."""
-        return self.initiation_status == InitiationStatus.BRAHMIN
-
-    def get_children_info(self) -> list[dict[str, Any]]:
-        """Get structured children information."""
-        if not self.children:
-            return []
-
-        if isinstance(self.children, list):
-            return self.children
-
-        if isinstance(self.children, dict):
-            return self.children.get("children", [])
-
-        return []
-
-    def set_children_info(self, children_data: list[dict[str, Any]]) -> None:
-        """Set children information with proper structure."""
-        self.children = {
-            "count": len(children_data),
-            "children": children_data,
-            "updated_at": func.now(),
-        }
 
 
 # User model removed - using Devotee model only for production

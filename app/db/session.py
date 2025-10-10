@@ -6,12 +6,10 @@ database connection utilities with production-grade reliability features.
 """
 
 import logging
-import time
 from collections.abc import Generator
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.exc import DisconnectionError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
@@ -20,39 +18,6 @@ from app.core.config import settings
 logger = logging.getLogger("app.db")
 
 
-def retry_db_operation(max_retries: int = 3, delay: float = 1.0):
-    """
-    Decorator for retrying database operations.
-
-    Args:
-        max_retries: Maximum number of retry attempts
-        delay: Delay between retries in seconds
-    """
-    import functools
-
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except (DisconnectionError, OperationalError) as e:
-                    if attempt == max_retries - 1:
-                        logger.error(f"Database operation failed after {max_retries} attempts: {e}")
-                        raise
-                    logger.warning(
-                        f"Database operation failed (attempt {attempt + 1}), "
-                        f"retrying in {delay}s: {e}"
-                    )
-                    time.sleep(delay)
-            return None
-
-        return wrapper
-
-    return decorator
-
-
-# Database engine with enhanced production settings
 engine = create_engine(
     settings.database_url,
     # Connection pool settings
@@ -132,43 +97,6 @@ def get_db() -> Generator[Session]:
 
 
 @contextmanager
-def get_db_context() -> Generator[Session]:
-    """
-    Context manager for database sessions outside of FastAPI.
-
-    Usage:
-        with get_db_context() as db:
-            devotee = db.query(Devotee).first()
-    """
-    db = SessionLocal()
-    try:
-        yield db
-        db.commit()
-    except Exception as e:
-        logger.error(f"Database context error: {e}")
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-
-def check_database_connection() -> bool:
-    """
-    Check if database connection is healthy.
-
-    Returns:
-        True if connection is healthy, False otherwise
-    """
-    try:
-        with engine.connect() as conn:
-            conn.execute("SELECT 1")
-        return True
-    except Exception as e:
-        logger.error(f"Database health check failed: {e}")
-        return False
-
-
-# Log database configuration with error handling
 def log_database_config():
     """Safely log database configuration."""
     try:
