@@ -6,8 +6,7 @@ hashing and JWT for token-based authentication.
 """
 
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -50,7 +49,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """
     Create a JWT access token.
 
@@ -65,18 +64,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(
-            minutes=settings.jwt_access_token_expire_minutes
-        )
+        expire = datetime.utcnow() + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(
-        to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
-    )
+    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str) -> dict | None:
     """
     Verify and decode a JWT token.
 
@@ -87,15 +82,13 @@ def verify_token(token: str) -> Optional[dict]:
         The decoded token payload if valid, None otherwise
     """
     try:
-        payload = jwt.decode(
-            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
-        )
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         return payload
     except JWTError:
         return None
 
 
-def get_user_from_token(token: str) -> Optional[str]:
+def get_user_from_token(token: str) -> str | None:
     """
     Extract user email from a JWT token.
 
@@ -200,7 +193,7 @@ def get_current_admin_user(
     return current_devotee
 
 
-def create_devotee_token(devotee, expires_delta: Optional[timedelta] = None) -> str:
+def create_devotee_token(devotee, expires_delta: timedelta | None = None) -> str:
     """
     Create a JWT token for a specific devotee.
 
@@ -276,7 +269,7 @@ def generate_password_reset_token(email: str) -> str:
     token_data = {
         "sub": email,
         "type": "password_reset",
-        "iat": datetime.now(timezone.utc).timestamp(),
+        "iat": datetime.now(UTC).timestamp(),
         "nonce": secrets.token_hex(8),  # Add randomness
     }
 
@@ -285,7 +278,7 @@ def generate_password_reset_token(email: str) -> str:
     return create_access_token(token_data, expires_delta)
 
 
-def verify_password_reset_token(token: str) -> Optional[str]:
+def verify_password_reset_token(token: str) -> str | None:
     """
     Verify password reset token and return user email.
 
@@ -321,7 +314,7 @@ def is_token_expired(user) -> bool:
     if not user.password_reset_expires:
         return True
 
-    return user.password_reset_expires <= datetime.now(timezone.utc)
+    return user.password_reset_expires <= datetime.now(UTC)
 
 
 def clear_reset_token(user, db_session) -> None:

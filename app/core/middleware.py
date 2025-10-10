@@ -7,7 +7,7 @@ aspects of request/response processing in production environments.
 
 import logging
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -34,9 +34,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
 
         # Log request
-        logger.info(
-            f"Request started: {request.method} {request.url.path} " f"from {client_ip}"
-        )
+        logger.info(f"Request started: {request.method} {request.url.path} from {client_ip}")
 
         try:
             # Process request

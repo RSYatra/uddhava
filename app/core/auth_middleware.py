@@ -7,7 +7,7 @@ specifically designed for protecting authentication-related endpoints.
 
 import logging
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import HTTPException, Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -61,9 +61,7 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
         # 1. Request size limiting
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB limit
-            logger.warning(
-                f"Request too large: {content_length} bytes from {request.client.host}"
-            )
+            logger.warning(f"Request too large: {content_length} bytes from {request.client.host}")
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="Request too large",
@@ -115,9 +113,7 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
                 or content_type.startswith("application/x-www-form-urlencoded")
                 or content_type.startswith("multipart/form-data")
             ):
-                logger.warning(
-                    f"Invalid content type for auth endpoint: {content_type}"
-                )
+                logger.warning(f"Invalid content type for auth endpoint: {content_type}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid content type",

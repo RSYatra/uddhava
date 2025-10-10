@@ -6,7 +6,7 @@ status, database connectivity, and system information.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
@@ -51,7 +51,7 @@ def health_check():
 
         return HealthResponse(
             status="healthy",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             version=settings.app_version,
         )
 

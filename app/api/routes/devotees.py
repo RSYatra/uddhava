@@ -7,7 +7,6 @@ Optimized for performance with 100K users.
 """
 
 import logging
-from typing import List, Optional
 
 from fastapi import (
     APIRouter,
@@ -70,52 +69,44 @@ def get_db():
 @admin_only_endpoint
 async def get_devotees(
     # Text search
-    search: Optional[str] = Query(
+    search: str | None = Query(
         None, max_length=255, description="Search in name, email, or location"
     ),
     # Location filters
-    country: Optional[str] = Query(
-        None, max_length=100, description="Filter by country"
-    ),
-    state_province: Optional[str] = Query(
+    country: str | None = Query(None, max_length=100, description="Filter by country"),
+    state_province: str | None = Query(
         None, max_length=100, description="Filter by state/province"
     ),
-    city: Optional[str] = Query(None, max_length=100, description="Filter by city"),
+    city: str | None = Query(None, max_length=100, description="Filter by city"),
     # Spiritual filters
-    initiation_status: Optional[InitiationStatus] = Query(
+    initiation_status: InitiationStatus | None = Query(
         None, description="Filter by initiation status"
     ),
-    spiritual_master: Optional[str] = Query(
+    spiritual_master: str | None = Query(
         None, max_length=255, description="Filter by spiritual master"
     ),
     # Demographic filters
-    gender: Optional[Gender] = Query(None, description="Filter by gender"),
-    marital_status: Optional[MaritalStatus] = Query(
-        None, description="Filter by marital status"
-    ),
+    gender: Gender | None = Query(None, description="Filter by gender"),
+    marital_status: MaritalStatus | None = Query(None, description="Filter by marital status"),
     # Age range filters
-    min_age: Optional[int] = Query(
-        None, ge=0, le=120, description="Minimum age filter"
-    ),
-    max_age: Optional[int] = Query(
-        None, ge=0, le=120, description="Maximum age filter"
-    ),
+    min_age: int | None = Query(None, ge=0, le=120, description="Minimum age filter"),
+    max_age: int | None = Query(None, ge=0, le=120, description="Maximum age filter"),
     # Chanting filters
-    min_rounds: Optional[int] = Query(
+    min_rounds: int | None = Query(
         None, ge=0, le=200, description="Minimum chanting rounds filter"
     ),
-    max_rounds: Optional[int] = Query(
+    max_rounds: int | None = Query(
         None, ge=0, le=200, description="Maximum chanting rounds filter"
     ),
     # Pagination
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Items per page"),
     # Sorting
-    sort_by: Optional[str] = Query(
+    sort_by: str | None = Query(
         "created_at",
         description="Sort field: legal_name, created_at, city, initiation_status",
     ),
-    sort_order: Optional[str] = Query(
+    sort_order: str | None = Query(
         "desc", pattern="^(asc|desc)$", description="Sort order: asc or desc"
     ),
     # Dependencies
@@ -354,7 +345,7 @@ async def update_devotee(
         )
 
 
-@router.get("/search/text", response_model=List[DevoteeOut], summary="Fast Text Search")
+@router.get("/search/text", response_model=list[DevoteeOut], summary="Fast Text Search")
 @admin_only_endpoint
 async def search_devotees_text(
     q: str = Query(..., min_length=2, max_length=100, description="Search query"),
@@ -407,14 +398,14 @@ async def search_devotees_text(
 
 @router.get(
     "/location/{country}",
-    response_model=List[DevoteeOut],
+    response_model=list[DevoteeOut],
     summary="Get Devotees by Location",
 )
 @admin_only_endpoint
 async def get_devotees_by_location(
     country: str,
-    state: Optional[str] = Query(None, description="State or province"),
-    city: Optional[str] = Query(None, description="City name"),
+    state: str | None = Query(None, description="State or province"),
+    city: str | None = Query(None, description="City name"),
     db: Session = Depends(get_db),
     current_user: Devotee = Depends(get_current_user),
 ):
@@ -459,7 +450,7 @@ async def get_devotees_by_location(
 
 @router.get(
     "/spiritual-master/{master_name}",
-    response_model=List[DevoteeOut],
+    response_model=list[DevoteeOut],
     summary="Get Devotees by Spiritual Master",
 )
 @admin_only_endpoint
@@ -486,9 +477,7 @@ async def get_devotees_by_spiritual_master(
         service = DevoteeService(db)
 
         devotees = service.get_devotees_by_spiritual_master(db, master_name)
-        logger.info(
-            f"Retrieved {len(devotees)} devotees of spiritual master: {master_name}"
-        )
+        logger.info(f"Retrieved {len(devotees)} devotees of spiritual master: {master_name}")
         return devotees
 
     except SQLAlchemyError:
@@ -584,9 +573,7 @@ async def get_devotee_photo(
 
         # TODO: Implement photo storage and retrieval
         # For now, return a placeholder response
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Photo not available"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not available")
 
     except HTTPException:
         raise
@@ -664,9 +651,7 @@ async def validate_email_availability(
             "email": email,
             "available": existing_devotee is None,
             "message": (
-                "Email is available"
-                if existing_devotee is None
-                else "Email already registered"
+                "Email is available" if existing_devotee is None else "Email already registered"
             ),
         }
 

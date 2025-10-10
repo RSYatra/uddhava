@@ -21,6 +21,4 @@ class ErrorResponse(BaseModel):
     """Schema for error responses."""
 
     detail: str = Field(..., description="Error message")
-    error_code: str | None = Field(
-        None, description="Error code for programmatic handling"
-    )
+    error_code: str | None = Field(None, description="Error code for programmatic handling")

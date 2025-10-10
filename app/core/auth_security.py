@@ -10,8 +10,7 @@ import logging
 import re
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Dict
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, ValidationError
@@ -26,10 +25,10 @@ class AuthSecurityManager:
 
     def __init__(self):
         # In-memory storage for rate limiting (use Redis in production)
-        self._login_attempts: Dict[str, list] = {}
-        self._signup_attempts: Dict[str, list] = {}
-        self._password_reset_attempts: Dict[str, list] = {}
-        self._blocked_ips: Dict[str, datetime] = {}
+        self._login_attempts: dict[str, list] = {}
+        self._signup_attempts: dict[str, list] = {}
+        self._password_reset_attempts: dict[str, list] = {}
+        self._blocked_ips: dict[str, datetime] = {}
 
         # Security configuration
         self.MAX_LOGIN_ATTEMPTS = 5
@@ -52,14 +51,12 @@ class AuthSecurityManager:
 
         return request.client.host if request.client else "unknown"
 
-    def _clean_old_attempts(self, attempts_dict: Dict[str, list], window: int):
+    def _clean_old_attempts(self, attempts_dict: dict[str, list], window: int):
         """Remove old attempts outside the time window."""
         current_time = time.time()
         for key in list(attempts_dict.keys()):
             attempts_dict[key] = [
-                timestamp
-                for timestamp in attempts_dict[key]
-                if current_time - timestamp < window
+                timestamp for timestamp in attempts_dict[key] if current_time - timestamp < window
             ]
             if not attempts_dict[key]:
                 del attempts_dict[key]
@@ -67,7 +64,7 @@ class AuthSecurityManager:
     def _is_ip_blocked(self, ip: str) -> bool:
         """Check if IP is currently blocked."""
         if ip in self._blocked_ips:
-            if datetime.now(timezone.utc) < self._blocked_ips[ip]:
+            if datetime.now(UTC) < self._blocked_ips[ip]:
                 return True
             del self._blocked_ips[ip]
         return False
@@ -75,7 +72,7 @@ class AuthSecurityManager:
     def _block_ip(self, ip: str, duration_seconds: int = None):
         """Block IP address for specified duration."""
         duration = duration_seconds or self.BLOCK_DURATION
-        block_until = datetime.now(timezone.utc) + timedelta(seconds=duration)
+        block_until = datetime.now(UTC) + timedelta(seconds=duration)
         self._blocked_ips[ip] = block_until
         logger.warning(f"Blocked IP {ip} until {block_until}")
 
@@ -417,9 +414,7 @@ class ErrorHandler:
             "not_found": status.HTTP_404_NOT_FOUND,
         }
 
-        status_code = status_codes.get(
-            error_type, status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        status_code = status_codes.get(error_type, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Log the actual error for debugging but don't expose it
         if detail:

@@ -6,7 +6,6 @@ and managing user roles in the system.
 """
 
 import logging
-from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -22,7 +21,7 @@ def create_admin_user(
     email: str,
     secret: str,
     chanting_rounds: int = 16,
-    db: Optional[Session] = None,
+    db: Session | None = None,
 ) -> Devotee:
     """
     Create an admin user in the system.
@@ -45,9 +44,7 @@ def create_admin_user(
 
     try:
         # Check if user already exists
-        existing_user = (
-            db_session.query(Devotee).filter(Devotee.email == email.lower()).first()
-        )
+        existing_user = db_session.query(Devotee).filter(Devotee.email == email.lower()).first()
         if existing_user:
             logger.warning(f"Devotee with email {email} already exists")
             if existing_user.role != UserRole.ADMIN:
@@ -119,7 +116,7 @@ def ensure_admin_exists() -> bool:
         db.close()
 
 
-def promote_user_to_admin(email: str, db: Optional[Session] = None) -> bool:
+def promote_user_to_admin(email: str, db: Session | None = None) -> bool:
     """
     Promote an existing user to admin role.
 
@@ -158,7 +155,7 @@ def promote_user_to_admin(email: str, db: Optional[Session] = None) -> bool:
             db_session.close()
 
 
-def demote_admin_to_user(email: str, db: Optional[Session] = None) -> bool:
+def demote_admin_to_user(email: str, db: Session | None = None) -> bool:
     """
     Demote an admin user to regular user role.
 
@@ -182,9 +179,7 @@ def demote_admin_to_user(email: str, db: Optional[Session] = None) -> bool:
             return True
 
         # Check if this is the last admin
-        admin_count = (
-            db_session.query(Devotee).filter(Devotee.role == UserRole.ADMIN).count()
-        )
+        admin_count = db_session.query(Devotee).filter(Devotee.role == UserRole.ADMIN).count()
         if admin_count <= 1:
             logger.error("Cannot demote last admin user")
             return False
@@ -205,7 +200,7 @@ def demote_admin_to_user(email: str, db: Optional[Session] = None) -> bool:
             db_session.close()
 
 
-def list_admin_users(db: Optional[Session] = None) -> list[Devotee]:
+def list_admin_users(db: Session | None = None) -> list[Devotee]:
     """
     Get list of all admin users.
 

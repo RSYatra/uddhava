@@ -14,8 +14,9 @@ import functools
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -31,7 +32,7 @@ class AsyncHelper:
     """Utilities for async operations and performance optimization."""
 
     # Thread pool for CPU-bound tasks
-    _thread_pool: Optional[ThreadPoolExecutor] = None
+    _thread_pool: ThreadPoolExecutor | None = None
 
     @classmethod
     def get_thread_pool(cls) -> ThreadPoolExecutor:
@@ -49,12 +50,10 @@ class AsyncHelper:
         loop = asyncio.get_event_loop()
         thread_pool = AsyncHelper.get_thread_pool()
 
-        return await loop.run_in_executor(
-            thread_pool, functools.partial(func, *args, **kwargs)
-        )
+        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
 
     @staticmethod
-    async def gather_with_concurrency(tasks: List[Callable], max_concurrency: int = 10):
+    async def gather_with_concurrency(tasks: list[Callable], max_concurrency: int = 10):
         """
         Run multiple async tasks with concurrency limit.
 
@@ -84,7 +83,7 @@ class SimpleCache:
 
     def __init__(self, default_ttl: int = 300):  # 5 minutes default
         self.default_ttl = default_ttl
-        self._cache: Dict[str, Dict] = {}
+        self._cache: dict[str, dict] = {}
         self._last_cleanup = time.time()
         self.cleanup_interval = 60  # Cleanup every minute
 
@@ -95,7 +94,7 @@ class SimpleCache:
         # nosec: B324 - Used for cache key generation, not security
         return hashlib.md5(key_string.encode(), usedforsecurity=False).hexdigest()
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get value from cache if not expired."""
         self._cleanup_expired()
 
@@ -111,7 +110,7 @@ class SimpleCache:
         logger.debug(f"Cache miss: {key}")
         return None
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set value in cache with TTL."""
         ttl = ttl or self.default_ttl
         self._cache[key] = {
@@ -142,9 +141,7 @@ class SimpleCache:
         if now - self._last_cleanup < self.cleanup_interval:
             return
 
-        expired_keys = [
-            key for key, entry in self._cache.items() if now >= entry["expires_at"]
-        ]
+        expired_keys = [key for key, entry in self._cache.items() if now >= entry["expires_at"]]
 
         for key in expired_keys:
             del self._cache[key]
@@ -154,7 +151,7 @@ class SimpleCache:
 
         self._last_cleanup = now
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         self._cleanup_expired()
         total_size = sum(len(str(entry["value"])) for entry in self._cache.values())
@@ -215,8 +212,7 @@ def cached(ttl: int = 300, prefix: str = ""):
             if result is not None:
                 cache.set(cache_key, result, ttl)
                 logger.debug(
-                    f"Function {func.__name__} executed in {execution_time:.3f}s, "
-                    "result cached"
+                    f"Function {func.__name__} executed in {execution_time:.3f}s, result cached"
                 )
 
             return result
@@ -233,7 +229,7 @@ class BatchProcessor:
     def batch_database_inserts(
         session: Session,
         model_class,
-        data_list: List[Dict[str, Any]],
+        data_list: list[dict[str, Any]],
         batch_size: int = 100,
     ) -> None:
         """
@@ -256,9 +252,7 @@ class BatchProcessor:
                 session.bulk_insert_mappings(model_class, batch)
                 session.commit()
 
-                logger.debug(
-                    f"Inserted batch {i // batch_size + 1}: {len(batch)} records"
-                )
+                logger.debug(f"Inserted batch {i // batch_size + 1}: {len(batch)} records")
 
             except Exception as e:
                 logger.error(f"Batch insert failed at batch {i // batch_size + 1}: {e}")
@@ -269,11 +263,11 @@ class BatchProcessor:
 
     @staticmethod
     async def async_batch_process(
-        items: List[T],
+        items: list[T],
         processor: Callable[[T], Any],
         batch_size: int = 10,
         max_workers: int = 4,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         Process items in batches asynchronously.
 
@@ -291,11 +285,9 @@ class BatchProcessor:
         # Split items into batches
         batches = [items[i : i + batch_size] for i in range(0, len(items), batch_size)]
 
-        async def process_batch(batch: List[T]) -> List[Any]:
+        async def process_batch(batch: list[T]) -> list[Any]:
             """Process a single batch."""
-            return await AsyncHelper.run_in_thread(
-                lambda: [processor(item) for item in batch]
-            )
+            return await AsyncHelper.run_in_thread(lambda: [processor(item) for item in batch])
 
         # Process batches concurrently
         batch_results = await AsyncHelper.gather_with_concurrency(
@@ -314,7 +306,7 @@ class DatabaseOptimizer:
     """Database query optimization utilities."""
 
     @staticmethod
-    def get_query_stats(session: Session) -> Dict[str, Any]:
+    def get_query_stats(session: Session) -> dict[str, Any]:
         """Get database performance statistics."""
         try:
             # MySQL specific queries
@@ -341,7 +333,7 @@ class DatabaseOptimizer:
             return {"error": "Database stats unavailable"}
 
     @staticmethod
-    def analyze_query_performance(session: Session, query: str) -> Dict[str, Any]:
+    def analyze_query_performance(session: Session, query: str) -> dict[str, Any]:
         """Analyze query performance using EXPLAIN."""
         try:
             explain_result = session.execute(text(f"EXPLAIN {query}")).fetchall()

@@ -5,7 +5,21 @@ This module defines the Pydantic models for email verification endpoints,
 including verification requests and responses.
 """
 
-from pydantic import BaseModel, EmailStr
+from typing import Any
+
+from pydantic import BaseModel, EmailStr, Field
+
+
+class SignupResponseData(BaseModel):
+    """Schema for signup response data."""
+
+    user_id: int = Field(..., description="Created user ID", examples=[123])
+    email: EmailStr = Field(
+        ...,
+        description="Registered email address",
+        examples=["radha.krishna@example.com"],
+    )
+    email_verified: bool = Field(..., description="Email verification status", examples=[False])
 
 
 class EmailVerificationRequest(BaseModel):
@@ -67,20 +81,35 @@ class ResendVerificationResponse(BaseModel):
 
 
 class SignupResponse(BaseModel):
-    """Schema for signup response with email verification required."""
+    """Standardized schema for all signup responses (success and error)."""
 
-    message: str
-    email: EmailStr
-    verification_required: bool = True
+    success: bool = Field(
+        ...,
+        description="Indicates if the request was successful",
+        examples=[True],
+    )
+    status_code: int = Field(..., description="HTTP status code", examples=[200])
+    message: str = Field(
+        ...,
+        description="Human-readable message explaining the result",
+        examples=[
+            "Registration successful. Verification email sent. Please check your inbox to verify your email address."
+        ],
+    )
+    data: dict[str, Any] | None = Field(
+        None, description="Optional response data (omitted for errors)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "message": (
-                    "Account created successfully! "
-                    "Please check your email for verification link."
-                ),
-                "email": "user@example.com",
-                "verification_required": True,
+                "success": True,
+                "status_code": 200,
+                "message": "Registration successful. Verification email sent. Please check your inbox to verify your email address.",
+                "data": {
+                    "user_id": 123,
+                    "email": "radha.krishna@example.com",
+                    "email_verified": False,
+                },
             }
         }

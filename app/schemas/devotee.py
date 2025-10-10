@@ -6,7 +6,7 @@ validation and serialization for the enhanced devotee management system.
 """
 
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -18,8 +18,8 @@ class ChildInfo(BaseModel):
     """Schema for child information."""
 
     name: str = Field(..., min_length=1, max_length=127)
-    date_of_birth: Optional[date] = None
-    gender: Optional[Gender] = None
+    date_of_birth: date | None = None
+    gender: Gender | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -28,9 +28,7 @@ class DevoteeBase(BaseModel):
     """Base devotee model with common fields."""
 
     # Personal Information
-    legal_name: str = Field(
-        ..., min_length=1, max_length=127, description="Legal full name"
-    )
+    legal_name: str = Field(..., min_length=1, max_length=127, description="Legal full name")
     date_of_birth: date = Field(..., description="Date of birth")
     gender: Gender = Field(..., description="Gender")
     marital_status: MaritalStatus = Field(..., description="Marital status")
@@ -49,73 +47,59 @@ class DevoteeBase(BaseModel):
         max_length=15,
         description="Mobile number without country code",
     )
-    national_id: Optional[str] = Field(
+    national_id: str | None = Field(
         None, max_length=50, description="National ID/Social Security Number"
     )
 
     # Family Information
-    father_name: str = Field(
-        ..., min_length=1, max_length=127, description="Father's name"
-    )
-    mother_name: str = Field(
-        ..., min_length=1, max_length=127, description="Mother's name"
-    )
-    spouse_name: Optional[str] = Field(
-        None, max_length=127, description="Spouse name (if married)"
-    )
-    date_of_marriage: Optional[date] = Field(
-        None, description="Date of marriage (if applicable)"
-    )
+    father_name: str = Field(..., min_length=1, max_length=127, description="Father's name")
+    mother_name: str = Field(..., min_length=1, max_length=127, description="Mother's name")
+    spouse_name: str | None = Field(None, max_length=127, description="Spouse name (if married)")
+    date_of_marriage: date | None = Field(None, description="Date of marriage (if applicable)")
 
     # Location Information
-    address: Optional[str] = Field(None, description="Full address")
-    city: Optional[str] = Field(None, max_length=100, description="City")
-    state_province: Optional[str] = Field(
-        None, max_length=100, description="State or Province"
-    )
-    country: Optional[str] = Field(None, max_length=100, description="Country")
-    postal_code: Optional[str] = Field(
-        None, max_length=20, description="Postal/ZIP code"
-    )
+    address: str | None = Field(None, description="Full address")
+    city: str | None = Field(None, max_length=100, description="City")
+    state_province: str | None = Field(None, max_length=100, description="State or Province")
+    country: str | None = Field(None, max_length=100, description="Country")
+    postal_code: str | None = Field(None, max_length=20, description="Postal/ZIP code")
 
     # ISKCON Spiritual Information
-    initiation_status: Optional[InitiationStatus] = Field(
+    initiation_status: InitiationStatus | None = Field(
         InitiationStatus.ASPIRING, description="Current initiation status"
     )
-    spiritual_master: Optional[str] = Field(
+    spiritual_master: str | None = Field(
         None, max_length=255, description="Name of spiritual master"
     )
-    initiation_date: Optional[date] = Field(None, description="Date of initiation")
-    initiation_place: Optional[str] = Field(
-        None, max_length=127, description="Place of initiation"
-    )
-    spiritual_guide: Optional[str] = Field(
+    initiation_date: date | None = Field(None, description="Date of initiation")
+    initiation_place: str | None = Field(None, max_length=127, description="Place of initiation")
+    spiritual_guide: str | None = Field(
         None, max_length=127, description="Name of spiritual guide/mentor"
     )
 
     # ISKCON Journey
-    when_were_you_introduced_to_iskcon: Optional[date] = Field(
+    when_were_you_introduced_to_iskcon: date | None = Field(
         None, description="When were you first introduced to ISKCON"
     )
-    who_introduced_you_to_iskcon: Optional[str] = Field(
+    who_introduced_you_to_iskcon: str | None = Field(
         None, max_length=127, description="Who introduced you to ISKCON"
     )
-    which_iskcon_center_you_first_connected_to: Optional[str] = Field(
+    which_iskcon_center_you_first_connected_to: str | None = Field(
         None,
         max_length=127,
         description="First ISKCON center you connected to",
     )
 
     # Chanting Practice
-    chanting_number_of_rounds: Optional[int] = Field(
+    chanting_number_of_rounds: int | None = Field(
         16, ge=0, le=200, description="Current daily chanting rounds"
     )
-    chanting_16_rounds_since: Optional[date] = Field(
+    chanting_16_rounds_since: date | None = Field(
         None, description="Date since chanting 16 rounds consistently"
     )
 
     # Devotional Education
-    devotional_courses: Optional[str] = Field(
+    devotional_courses: str | None = Field(
         None, description="Devotional courses completed (comma-separated)"
     )
 
@@ -164,13 +148,24 @@ class DevoteeSimpleCreate(BaseModel):
     """Schema for simplified devotee signup with minimal required fields."""
 
     # Basic required fields for signup
-    legal_name: str = Field(..., min_length=1, max_length=127, description="Full name")
-    email: EmailStr = Field(..., description="Email address")
+    legal_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=127,
+        description="Full legal name (1-127 characters)",
+        examples=["Radha Krishna Das", "Govinda Priya Devi Dasi"],
+    )
+    email: EmailStr = Field(
+        ...,
+        description="Email address (case-insensitive, normalized to lowercase). Pattern: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+        examples=["radha.krishna@example.com", "govinda.priya@example.com"],
+    )
     password: str = Field(
         ...,
         min_length=8,
         max_length=128,
-        description="Password: min 8 chars, uppercase, lowercase, number, special char",
+        description="Password (8-128 chars): Must contain uppercase, lowercase, digit, and special character. Pattern: ^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+-=\\[\\]{}|;:,.<>?]).{8,128}$",
+        examples=["SecurePass123!@#", "MyStr0ng@Password"],
     )
 
     @field_validator("password")
@@ -191,9 +186,7 @@ class DevoteeCreate(DevoteeBase):
         max_length=128,
         description="Password: min 8 chars, uppercase, lowercase, number, special char",
     )
-    children: Optional[List[ChildInfo]] = Field(
-        None, description="List of children information"
-    )
+    children: list[ChildInfo] | None = Field(None, description="List of children information")
 
     @field_validator("password")
     @classmethod
@@ -206,50 +199,48 @@ class DevoteeUpdate(BaseModel):
     """Schema for updating devotee information."""
 
     # Personal Information (excluding email which shouldn't change easily)
-    legal_name: Optional[str] = Field(None, min_length=1, max_length=127)
-    date_of_birth: Optional[date] = None
-    gender: Optional[Gender] = None
-    marital_status: Optional[MaritalStatus] = None
+    legal_name: str | None = Field(None, min_length=1, max_length=127)
+    date_of_birth: date | None = None
+    gender: Gender | None = None
+    marital_status: MaritalStatus | None = None
 
     # Contact Information
-    country_code: Optional[str] = Field(None, min_length=1, max_length=5)
-    mobile_number: Optional[str] = Field(None, min_length=10, max_length=15)
-    national_id: Optional[str] = Field(None, max_length=50)
+    country_code: str | None = Field(None, min_length=1, max_length=5)
+    mobile_number: str | None = Field(None, min_length=10, max_length=15)
+    national_id: str | None = Field(None, max_length=50)
 
     # Family Information
-    father_name: Optional[str] = Field(None, min_length=1, max_length=127)
-    mother_name: Optional[str] = Field(None, min_length=1, max_length=127)
-    spouse_name: Optional[str] = Field(None, max_length=127)
-    date_of_marriage: Optional[date] = None
-    children: Optional[List[ChildInfo]] = None
+    father_name: str | None = Field(None, min_length=1, max_length=127)
+    mother_name: str | None = Field(None, min_length=1, max_length=127)
+    spouse_name: str | None = Field(None, max_length=127)
+    date_of_marriage: date | None = None
+    children: list[ChildInfo] | None = None
 
     # Location Information
-    address: Optional[str] = None
-    city: Optional[str] = Field(None, max_length=100)
-    state_province: Optional[str] = Field(None, max_length=100)
-    country: Optional[str] = Field(None, max_length=100)
-    postal_code: Optional[str] = Field(None, max_length=20)
+    address: str | None = None
+    city: str | None = Field(None, max_length=100)
+    state_province: str | None = Field(None, max_length=100)
+    country: str | None = Field(None, max_length=100)
+    postal_code: str | None = Field(None, max_length=20)
 
     # ISKCON Spiritual Information
-    initiation_status: Optional[InitiationStatus] = None
-    spiritual_master: Optional[str] = Field(None, max_length=255)
-    initiation_date: Optional[date] = None
-    initiation_place: Optional[str] = Field(None, max_length=127)
-    spiritual_guide: Optional[str] = Field(None, max_length=127)
+    initiation_status: InitiationStatus | None = None
+    spiritual_master: str | None = Field(None, max_length=255)
+    initiation_date: date | None = None
+    initiation_place: str | None = Field(None, max_length=127)
+    spiritual_guide: str | None = Field(None, max_length=127)
 
     # ISKCON Journey
-    when_were_you_introduced_to_iskcon: Optional[date] = None
-    who_introduced_you_to_iskcon: Optional[str] = Field(None, max_length=127)
-    which_iskcon_center_you_first_connected_to: Optional[str] = Field(
-        None, max_length=127
-    )
+    when_were_you_introduced_to_iskcon: date | None = None
+    who_introduced_you_to_iskcon: str | None = Field(None, max_length=127)
+    which_iskcon_center_you_first_connected_to: str | None = Field(None, max_length=127)
 
     # Chanting Practice
-    chanting_number_of_rounds: Optional[int] = Field(None, ge=0, le=200)
-    chanting_16_rounds_since: Optional[date] = None
+    chanting_number_of_rounds: int | None = Field(None, ge=0, le=200)
+    chanting_16_rounds_since: date | None = None
 
     # Devotional Education
-    devotional_courses: Optional[str] = None
+    devotional_courses: str | None = None
 
     @field_validator("mobile_number")
     @classmethod
@@ -268,26 +259,20 @@ class DevoteeOut(DevoteeBase):
 
     id: int = Field(..., description="Devotee's unique identifier")
     role: UserRole = Field(default=UserRole.USER, description="User role")
-    children: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Children information"
-    )
-    created_at: Optional[datetime] = Field(
-        None, description="Account creation timestamp"
-    )
-    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+    children: list[dict[str, Any]] | None = Field(None, description="Children information")
+    created_at: datetime | None = Field(None, description="Account creation timestamp")
+    updated_at: datetime | None = Field(None, description="Last update timestamp")
 
     # Computed fields
-    full_name: Optional[str] = Field(None, description="Full display name")
-    location_display: Optional[str] = Field(None, description="Formatted location")
-    mobile_display: Optional[str] = Field(None, description="Formatted mobile number")
-    children_count: Optional[int] = Field(None, description="Number of children")
-    spiritual_journey_years: Optional[int] = Field(
+    full_name: str | None = Field(None, description="Full display name")
+    location_display: str | None = Field(None, description="Formatted location")
+    mobile_display: str | None = Field(None, description="Formatted mobile number")
+    children_count: int | None = Field(None, description="Number of children")
+    spiritual_journey_years: int | None = Field(
         None, description="Years since introduction to ISKCON"
     )
-    is_initiated: Optional[bool] = Field(
-        None, description="Whether devotee is initiated"
-    )
-    is_brahmin_initiated: Optional[bool] = Field(
+    is_initiated: bool | None = Field(None, description="Whether devotee is initiated")
+    is_brahmin_initiated: bool | None = Field(
         None, description="Whether devotee has Brahmin initiation"
     )
 
@@ -298,50 +283,48 @@ class DevoteeLogin(BaseModel):
     """Schema for devotee login."""
 
     email: EmailStr = Field(..., description="Devotee's email address")
-    password: str = Field(
-        ..., min_length=1, max_length=128, description="Devotee's password"
-    )
+    password: str = Field(..., min_length=1, max_length=128, description="Devotee's password")
 
 
 class DevoteeSearchFilters(BaseModel):
     """Schema for devotee search filters."""
 
     # Text search
-    search: Optional[str] = Field(
+    search: str | None = Field(
         None, max_length=255, description="Search in name, email, or location"
     )
 
     # Location filters
-    country: Optional[str] = Field(None, max_length=100)
-    state_province: Optional[str] = Field(None, max_length=100)
-    city: Optional[str] = Field(None, max_length=100)
+    country: str | None = Field(None, max_length=100)
+    state_province: str | None = Field(None, max_length=100)
+    city: str | None = Field(None, max_length=100)
 
     # Spiritual filters
-    initiation_status: Optional[InitiationStatus] = None
-    spiritual_master: Optional[str] = Field(None, max_length=255)
+    initiation_status: InitiationStatus | None = None
+    spiritual_master: str | None = Field(None, max_length=255)
 
     # Demographic filters
-    gender: Optional[Gender] = None
-    marital_status: Optional[MaritalStatus] = None
+    gender: Gender | None = None
+    marital_status: MaritalStatus | None = None
 
     # Age range filters
-    min_age: Optional[int] = Field(None, ge=0, le=120)
-    max_age: Optional[int] = Field(None, ge=0, le=120)
+    min_age: int | None = Field(None, ge=0, le=120)
+    max_age: int | None = Field(None, ge=0, le=120)
 
     # Chanting filters
-    min_rounds: Optional[int] = Field(None, ge=0, le=200)
-    max_rounds: Optional[int] = Field(None, ge=0, le=200)
+    min_rounds: int | None = Field(None, ge=0, le=200)
+    max_rounds: int | None = Field(None, ge=0, le=200)
 
     # Pagination
     page: int = Field(1, ge=1, description="Page number")
     limit: int = Field(50, ge=1, le=100, description="Items per page")
 
     # Sorting
-    sort_by: Optional[str] = Field(
+    sort_by: str | None = Field(
         "created_at",
         description="Sort field: legal_name, created_at, city, initiation_status",
     )
-    sort_order: Optional[str] = Field(
+    sort_order: str | None = Field(
         "desc", pattern="^(asc|desc)$", description="Sort order: asc or desc"
     )
 
@@ -362,16 +345,14 @@ class DevoteeSearchFilters(BaseModel):
         if v is not None and "min_rounds" in values.data:
             min_rounds = values.data["min_rounds"]
             if min_rounds is not None and v < min_rounds:
-                raise ValueError(
-                    "max_rounds must be greater than or equal to min_rounds"
-                )
+                raise ValueError("max_rounds must be greater than or equal to min_rounds")
         return v
 
 
 class DevoteeListResponse(BaseModel):
     """Schema for paginated devotee list response."""
 
-    devotees: List[DevoteeOut]
+    devotees: list[DevoteeOut]
     total: int = Field(..., description="Total number of devotees matching filters")
     page: int = Field(..., description="Current page number")
     limit: int = Field(..., description="Items per page")
@@ -384,12 +365,12 @@ class DevoteeStatsResponse(BaseModel):
     """Schema for devotee statistics."""
 
     total_devotees: int
-    by_country: Dict[str, int]
-    by_initiation_status: Dict[str, int]
-    by_gender: Dict[str, int]
-    by_marital_status: Dict[str, int]
-    average_age: Optional[float]
-    average_chanting_rounds: Optional[float]
+    by_country: dict[str, int]
+    by_initiation_status: dict[str, int]
+    by_gender: dict[str, int]
+    by_marital_status: dict[str, int]
+    average_age: float | None
+    average_chanting_rounds: float | None
     recently_joined: int  # In last 30 days
 
 
@@ -405,7 +386,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     """Schema for token payload data."""
 
-    email: Optional[str] = Field(None, description="Devotee email from token")
+    email: str | None = Field(None, description="Devotee email from token")
 
 
 # Enhanced error response schemas
@@ -414,17 +395,15 @@ class ValidationErrorDetail(BaseModel):
 
     field: str
     message: str
-    invalid_value: Optional[Any] = None
+    invalid_value: Any | None = None
 
 
 class DetailedErrorResponse(BaseModel):
     """Schema for detailed error responses."""
 
     detail: str = Field(..., description="Error message")
-    error_code: Optional[str] = Field(
-        None, description="Error code for programmatic handling"
-    )
-    validation_errors: Optional[List[ValidationErrorDetail]] = Field(
+    error_code: str | None = Field(None, description="Error code for programmatic handling")
+    validation_errors: list[ValidationErrorDetail] | None = Field(
         None, description="Field-specific validation errors"
     )
     timestamp: datetime = Field(default_factory=datetime.utcnow)

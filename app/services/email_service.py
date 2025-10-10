@@ -6,8 +6,7 @@ application notifications with proper error handling and logging.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
@@ -39,7 +38,7 @@ class EmailService:
         self.fast_mail = FastMail(conf)
 
     async def send_password_reset_email(
-        self, email: str, reset_token: str, user_name: Optional[str] = None
+        self, email: str, reset_token: str, user_name: str | None = None
     ) -> bool:
         """
         Send password reset email to user.
@@ -61,7 +60,7 @@ class EmailService:
 
             # Calculate token expiration time
             expires_in = settings.password_reset_token_expire_hours
-            expiry_time = datetime.now(timezone.utc) + timedelta(hours=expires_in)
+            expiry_time = datetime.now(UTC) + timedelta(hours=expires_in)
 
             # Create email content
             subject = "Password Reset Request - Radha Shyam Sundar Seva"
@@ -227,7 +226,7 @@ The Radha Shyam Sundar Seva Team
             )
 
     async def send_password_reset_confirmation(
-        self, email: str, user_name: Optional[str] = None
+        self, email: str, user_name: str | None = None
     ) -> bool:
         """
         Send confirmation email after successful password reset.
@@ -287,7 +286,7 @@ The Radha Shyam Sundar Seva Team
         self,
         email: str,
         verification_token: str,
-        user_name: Optional[str] = None,
+        user_name: str | None = None,
     ) -> bool:
         """
         Send email verification email to user.
@@ -305,13 +304,11 @@ The Radha Shyam Sundar Seva Team
         """
         try:
             # Generate verification URL
-            verification_url = (
-                f"{settings.email_verification_url_base}?token={verification_token}"
-            )
+            verification_url = f"{settings.email_verification_url_base}?token={verification_token}"
 
             # Calculate token expiration time
             expires_in = settings.email_verification_token_expire_hours
-            expiry_time = datetime.now(timezone.utc) + timedelta(hours=expires_in)
+            expiry_time = datetime.now(UTC) + timedelta(hours=expires_in)
 
             # Create email content
             subject = "Welcome to Radha Shyam Sundar Seva - Please Verify Your Email"
@@ -511,7 +508,7 @@ The Uddhava Team
             )
 
     async def send_email_verification_success(
-        self, email: str, user_name: Optional[str] = None
+        self, email: str, user_name: str | None = None
     ) -> bool:
         """
         Send confirmation email after successful email verification.
@@ -524,9 +521,7 @@ The Uddhava Team
             bool: True if email sent successfully
         """
         try:
-            subject = (
-                "Email Verified Successfully - Welcome to Radha Shyam Sundar Seva! 🎉"
-            )
+            subject = "Email Verified Successfully - Welcome to Radha Shyam Sundar Seva! 🎉"
 
             html_content = f"""
             <!DOCTYPE html>

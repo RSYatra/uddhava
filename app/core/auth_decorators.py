@@ -6,7 +6,7 @@ in route handlers while providing flexible security controls.
 """
 
 import functools
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, status
 
@@ -118,9 +118,7 @@ def require_owner_or_admin(user_id_param: str = "user_id"):
                 )
 
             # Check if user is admin or owns the resource
-            if current_user.role.isnot(UserRole.ADMIN) and current_user.id.isnot(
-                target_user_id
-            ):
+            if current_user.role.isnot(UserRole.ADMIN) and current_user.id.isnot(target_user_id):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(
@@ -171,9 +169,7 @@ def inject_current_user(func: Callable) -> Callable:
     if "current_user" not in sig.parameters:
         # Add current_user parameter with dependency injection
         @functools.wraps(func)
-        async def wrapper(
-            *args, current_user: Devotee = Depends(get_current_user), **kwargs
-        ):
+        async def wrapper(*args, current_user: Devotee = Depends(get_current_user), **kwargs):
             # Inject current_user into kwargs
             kwargs["current_user"] = current_user
             return await func(*args, **kwargs)

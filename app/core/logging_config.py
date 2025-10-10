@@ -10,7 +10,7 @@ import logging.config
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from app.core.config import settings
 
@@ -31,14 +31,13 @@ def setup_logging() -> None:
     log_dir.mkdir(exist_ok=True)
 
     # Logging configuration
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
             "detailed": {
                 "format": (
-                    "[{asctime}] {levelname:8} {name:25} {funcName:15} "
-                    "{lineno:4d} | {message}"
+                    "[{asctime}] {levelname:8} {name:25} {funcName:15} {lineno:4d} | {message}"
                 ),
                 "style": "{",
                 "datefmt": "%Y-%m-%d %H:%M:%S",
@@ -51,8 +50,7 @@ def setup_logging() -> None:
                 {
                     "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
                     "format": (
-                        "%(asctime)s %(name)s %(levelname)s "
-                        "%(funcName)s %(lineno)d %(message)s"
+                        "%(asctime)s %(name)s %(levelname)s %(funcName)s %(lineno)d %(message)s"
                     ),
                 }
                 if settings.is_production
@@ -163,9 +161,7 @@ def get_logger(name: str) -> logging.Logger:
 class LogExecutionTime:
     """Context manager to log execution time of operations."""
 
-    def __init__(
-        self, logger: logging.Logger, operation: str, level: int = logging.INFO
-    ):
+    def __init__(self, logger: logging.Logger, operation: str, level: int = logging.INFO):
         self.logger = logger
         self.operation = operation
         self.level = level
@@ -179,10 +175,6 @@ class LogExecutionTime:
     def __exit__(self, exc_type, exc_val, exc_tb):
         duration = time.time() - self.start_time
         if exc_type:
-            self.logger.error(
-                f"{self.operation} failed after {duration:.3f}s: {exc_val}"
-            )
+            self.logger.error(f"{self.operation} failed after {duration:.3f}s: {exc_val}")
         else:
-            self.logger.log(
-                self.level, f"{self.operation} completed in {duration:.3f}s"
-            )
+            self.logger.log(self.level, f"{self.operation} completed in {duration:.3f}s")
