@@ -8,8 +8,8 @@ best practices.
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -46,7 +46,7 @@ logger = logging.getLogger("app.main")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     FastAPI lifespan context manager.
 
@@ -114,8 +114,7 @@ def create_application() -> FastAPI:
         title="Radha Shyam Sundar Yatra - Uddhava API Endpoints",
         version=settings.app_version,
         description=(
-            "An application dedicated to managing and supporting "
-            "the Radha Shyam Sundar Yatra."
+            "An application dedicated to managing and supporting the Radha Shyam Sundar Yatra."
         ),
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
@@ -196,8 +195,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
     async def http_exception_handler(request: Request, exc: HTTPException):
         """Handle HTTP exceptions with proper logging."""
         logger.warning(
-            f"HTTP {exc.status_code} error on {request.method} "
-            f"{request.url.path}: {exc.detail}"
+            f"HTTP {exc.status_code} error on {request.method} {request.url.path}: {exc.detail}"
         )
         return JSONResponse(
             status_code=exc.status_code,
@@ -205,32 +203,36 @@ def setup_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def request_validation_exception_handler(
-        request: Request, exc: RequestValidationError
-    ):
-        """Handle request validation errors."""
-        logger.warning(
-            f"Request validation error on {request.method} {request.url.path}: {exc}"
-        )
+    async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Handle request validation errors with standardized response format."""
+        logger.warning(f"Request validation error on {request.method} {request.url.path}: {exc}")
 
-        # Sanitize errors to ensure JSON serialization
-        sanitized_errors = []
-        for error in exc.errors():
-            # Make a copy of the error and handle non-serializable ctx
-            sanitized_error = error.copy()
-            if "ctx" in sanitized_error:
-                ctx = sanitized_error["ctx"]
-                if "error" in ctx:
-                    # Convert ValueError to string
-                    sanitized_error["ctx"]["error"] = str(ctx["error"])
-            sanitized_errors.append(sanitized_error)
+        # Extract user-friendly error message from first error
+        errors = exc.errors()
+        if errors:
+            first_error = errors[0]
+
+            # Get the error message
+            if "ctx" in first_error and "error" in first_error["ctx"]:
+                error_msg = str(first_error["ctx"]["error"])
+            else:
+                error_msg = first_error.get("msg", "Validation failed")
+
+            # Create a clean, user-friendly message
+            if len(errors) > 1:
+                message = f"{error_msg} (and {len(errors) - 1} more validation error{'s' if len(errors) > 1 else ''})"
+            else:
+                message = error_msg
+        else:
+            message = "Request validation failed"
 
         return JSONResponse(
             status_code=422,
             content={
-                "detail": "Request validation error",
-                "errors": sanitized_errors,
+                "success": False,
                 "status_code": 422,
+                "message": message,
+                "data": None,
             },
         )
 
@@ -250,9 +252,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApplicationError)
     async def application_exception_handler(request: Request, exc: ApplicationError):
         """Handle custom application errors."""
-        logger.warning(
-            f"Application error on {request.method} {request.url.path}: {exc.message}"
-        )
+        logger.warning(f"Application error on {request.method} {request.url.path}: {exc.message}")
         return JSONResponse(
             status_code=400,
             content={
@@ -263,13 +263,10 @@ def setup_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(AuthenticationError)
-    async def authentication_exception_handler(
-        request: Request, exc: AuthenticationError
-    ):
+    async def authentication_exception_handler(request: Request, exc: AuthenticationError):
         """Handle authentication errors."""
         logger.warning(
-            f"Authentication error on {request.method} "
-            f"{request.url.path}: {exc.message}"
+            f"Authentication error on {request.method} {request.url.path}: {exc.message}"
         )
         return JSONResponse(
             status_code=401,
@@ -281,13 +278,9 @@ def setup_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(AuthorizationError)
-    async def authorization_exception_handler(
-        request: Request, exc: AuthorizationError
-    ):
+    async def authorization_exception_handler(request: Request, exc: AuthorizationError):
         """Handle authorization errors."""
-        logger.warning(
-            f"Authorization error on {request.method} {request.url.path}: {exc.message}"
-        )
+        logger.warning(f"Authorization error on {request.method} {request.url.path}: {exc.message}")
         return JSONResponse(
             status_code=403,
             content={
@@ -300,9 +293,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ValidationError)
     async def validation_exception_handler(request: Request, exc: ValidationError):
         """Handle custom validation errors."""
-        logger.warning(
-            f"Validation error on {request.method} {request.url.path}: {exc.message}"
-        )
+        logger.warning(f"Validation error on {request.method} {request.url.path}: {exc.message}")
         return JSONResponse(
             status_code=422,
             content={
@@ -315,9 +306,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(FileUploadError)
     async def file_upload_exception_handler(request: Request, exc: FileUploadError):
         """Handle file upload errors."""
-        logger.warning(
-            f"File upload error on {request.method} {request.url.path}: {exc.message}"
-        )
+        logger.warning(f"File upload error on {request.method} {request.url.path}: {exc.message}")
         return JSONResponse(
             status_code=400,
             content={

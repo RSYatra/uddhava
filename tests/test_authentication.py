@@ -17,9 +17,7 @@ from main import app
 
 # Create test database
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create tables
@@ -106,9 +104,7 @@ class TestAuthentication:
         db = TestingSessionLocal()
         try:
             devotee = (
-                db.query(Devotee)
-                .filter(Devotee.email == "unique_test_user@example.com")
-                .first()
+                db.query(Devotee).filter(Devotee.email == "unique_test_user@example.com").first()
             )
             if devotee:
                 devotee.email_verified = True
@@ -161,9 +157,7 @@ class TestAuthentication:
         db = TestingSessionLocal()
         try:
             devotee = (
-                db.query(Devotee)
-                .filter(Devotee.email == "unique_test_user@example.com")
-                .first()
+                db.query(Devotee).filter(Devotee.email == "unique_test_user@example.com").first()
             )
             if devotee:
                 devotee.email_verified = True

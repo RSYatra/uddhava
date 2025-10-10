@@ -187,7 +187,7 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-   && pip uninstall -y black isort flake8 mypy bandit pytest pytest-cov pre-commit pip-audit || true
+   && pip uninstall -y mypy bandit pytest pytest-cov pre-commit pip-audit || true
 
 COPY . .
 EXPOSE 8000
@@ -232,11 +232,15 @@ pre-commit install
 pytest
 ```
 
-### Code formatting
+### Code formatting and linting
 ```bash
-black .
-isort .
-flake8 .
+# Auto-fix all formatting and linting issues
+./format.sh
+
+# Or run Ruff commands individually
+ruff format .  # Format code
+ruff check .   # Check for issues
+ruff check --fix .  # Fix issues automatically
 ```
 
 ## Environment Variables

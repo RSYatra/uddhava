@@ -7,7 +7,6 @@ provides validation, and sets up proper defaults for different environments.
 
 import warnings
 from functools import lru_cache
-from typing import Optional
 from urllib.parse import quote_plus
 
 from pydantic import field_validator
@@ -51,7 +50,7 @@ class Settings(BaseSettings):
     allowed_headers: list = ["*"]
 
     # Security
-    debug_db_token: Optional[str] = None
+    debug_db_token: str | None = None
 
     # Email Configuration
     mail_username: str = "test@example.com"
@@ -125,18 +124,14 @@ class Settings(BaseSettings):
         env_prefix = ""
         fields = {
             "jwt_secret_key": {"env": "JWT_SECRET_KEY"},
-            "jwt_access_token_expire_minutes": {
-                "env": "JWT_ACCESS_TOKEN_EXPIRE_MINUTES"
-            },
+            "jwt_access_token_expire_minutes": {"env": "JWT_ACCESS_TOKEN_EXPIRE_MINUTES"},
             "max_upload_size_mb": {"env": "MAX_UPLOAD_SIZE_MB"},
             "mail_username": {"env": "MAIL_USERNAME"},
             "mail_password": {"env": "MAIL_PASSWORD"},
             "mail_from": {"env": "MAIL_FROM"},
             "mail_port": {"env": "MAIL_PORT"},
             "mail_server": {"env": "MAIL_SERVER"},
-            "password_reset_token_expire_hours": {
-                "env": "PASSWORD_RESET_TOKEN_EXPIRE_HOURS"
-            },
+            "password_reset_token_expire_hours": {"env": "PASSWORD_RESET_TOKEN_EXPIRE_HOURS"},
             "password_reset_url_base": {"env": "PASSWORD_RESET_URL_BASE"},
             "email_verification_token_expire_hours": {
                 "env": "EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS"

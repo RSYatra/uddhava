@@ -31,9 +31,7 @@ def upgrade():
     dummy_hash = "$2b$12$dummy.hash.for.existing.users.only"
     # nosec: B608 - Safe parameterized query for migration
     op.execute(
-        text(
-            "UPDATE users SET password_hash = :dummy_hash WHERE password_hash IS NULL"
-        ),
+        text("UPDATE users SET password_hash = :dummy_hash WHERE password_hash IS NULL"),
         {"dummy_hash": dummy_hash},
     )
 

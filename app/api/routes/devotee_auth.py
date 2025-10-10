@@ -7,7 +7,6 @@ login, email verification, password reset, and JWT token management.
 
 import logging
 from datetime import datetime
-from typing import Dict
 
 from fastapi import (
     APIRouter,
@@ -92,9 +91,7 @@ def get_current_devotee(
     try:
         # Extract and verify token
         token = credentials.credentials
-        payload = jwt.decode(
-            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
-        )
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
 
         if payload is None:
             raise credentials_exception
@@ -117,7 +114,294 @@ def get_current_devotee(
         raise credentials_exception from None
 
 
-@router.post("/signup", response_model=SignupResponse)
+@router.post(
+    "/signup",
+    response_model=SignupResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Register New Devotee Account",
+    description=r"""
+Register a new devotee with simplified signup process.
+
+**Process Flow:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SIGNUP PROCESS                           │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │   Request    │
+    └──────┬───────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Schema Validation│ (Pydantic)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  Rate Limit      │ (3 per 15 min)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Email Validation │ (Format + Normalize)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Password Check   │ (Complexity + Strength)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Sanitization   │ (XSS + SQL Injection)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Check Existing   │
+    │      User        │
+    └──────┬───────────┘
+           │
+           ├─ Verified? → 409 Error (Login Instead)
+           │
+           ├─ Unverified? → Resend Email + 409 Error
+           │
+           ↓ New User
+    ┌──────────────────┐
+    │  Generate Token  │ (Secure Random)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  Create Devotee  │ (DB Insert)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Send Email     │ (Verification Link)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  200 Response    │ (Success Message)
+    └──────────────────┘
+```
+
+**Security & Requirements:**
+- Rate limited: 3 attempts per 15 minutes per IP
+- Password requirements:
+  - Length: Minimum 8 characters
+  - Must contain: uppercase (A-Z), lowercase (a-z), digit (0-9), special char
+  - Validation pattern: `^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]).{8,128}$`
+- Email requirements:
+  - Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+  - Automatically normalized to lowercase
+- Email verification required before login
+
+**Account Creation:**
+1. Account created in unverified state
+2. Verification email sent (valid for 24 hours)
+3. User must verify email via link in email
+4. After verification, user can login and complete full profile
+
+**Important Notes:**
+- Email is case-insensitive (automatically normalized to lowercase)
+- If email exists but unverified, verification email is automatically resent
+- Passwords are hashed with bcrypt (never stored in plain text)
+    """,
+    responses={
+        200: {
+            "description": "Success - Account created and verification email sent",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Registration successful. Verification email sent. Please check your inbox to verify your email address.",
+                        "data": {
+                            "user_id": 123,
+                            "email": "radha.krishna@example.com",
+                            "email_verified": False,
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Invalid input or weak password",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "weak_password": {
+                            "summary": "Password complexity requirements not met",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Password must contain uppercase, lowercase, digit, and special character",
+                                "data": None,
+                            },
+                        },
+                        "common_password": {
+                            "summary": "Password is too common/weak",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Password is too common",
+                                "data": None,
+                            },
+                        },
+                        "invalid_email": {
+                            "summary": "Email format is invalid",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Invalid email format",
+                                "data": None,
+                            },
+                        },
+                        "password_too_long": {
+                            "summary": "Password exceeds maximum length (DoS prevention)",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Password too long",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        409: {
+            "description": "Conflict - Email already registered",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "verified_user": {
+                            "summary": "Email exists and is verified (user should login instead)",
+                            "value": {
+                                "success": False,
+                                "status_code": 409,
+                                "message": "A verified devotee with this email already exists",
+                                "data": {"email": "user@example.com"},
+                            },
+                        },
+                        "unverified_user": {
+                            "summary": "Email exists but unverified (verification email resent automatically)",
+                            "value": {
+                                "success": False,
+                                "status_code": 409,
+                                "message": "Devotee exists but is not verified. Verification email sent again.",
+                                "data": {"email": "user@example.com"},
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation Error - Request schema validation failed",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "missing_field": {
+                            "summary": "Required field is missing",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Field 'password' is required",
+                                "data": None,
+                            },
+                        },
+                        "invalid_email_format": {
+                            "summary": "Email format validation failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Invalid email format",
+                                "data": None,
+                            },
+                        },
+                        "name_too_long": {
+                            "summary": "Name exceeds 127 character limit",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Legal name must not exceed 127 characters",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        429: {
+            "description": "Rate Limited - Too many requests",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "rate_limit_exceeded": {
+                            "summary": "More than 3 signup attempts in 15 minutes",
+                            "value": {
+                                "success": False,
+                                "status_code": 429,
+                                "message": "Too many signup attempts from this IP. Please try again later.",
+                                "data": {"retry_after_seconds": 900},
+                            },
+                        },
+                        "ip_blocked": {
+                            "summary": "IP temporarily blocked for suspicious activity (1 hour block)",
+                            "value": {
+                                "success": False,
+                                "status_code": 429,
+                                "message": "IP address temporarily blocked",
+                                "data": {"retry_after_seconds": 3600},
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure (safe to retry)",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "database_error": {
+                            "summary": "Database connection or transaction failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Database error occurred during registration",
+                                "data": None,
+                            },
+                        },
+                        "email_service_error": {
+                            "summary": "Email service unavailable (user created but email not sent)",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Failed to send verification email. Please try again later.",
+                                "data": None,
+                            },
+                        },
+                        "unexpected_error": {
+                            "summary": "Unexpected system error",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "An unexpected error occurred during registration",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+    tags=["Devotee Authentication"],
+)
 async def devotee_signup(
     request: Request,
     devotee_data: DevoteeSimpleCreate,
@@ -126,14 +410,7 @@ async def devotee_signup(
     """
     Register a new devotee with simplified signup process.
 
-    Creates an unverified devotee account with minimal information and sends
-    verification email. After verification, devotees can complete their profile.
-
-    Security Features:
-    - Rate limiting to prevent spam signups
-    - Input validation and sanitization
-    - Password strength requirements
-    - Email format validation
+    See the detailed description and response examples above for all scenarios.
     """
     try:
         # Apply rate limiting
@@ -156,30 +433,57 @@ async def devotee_signup(
 
         logger.info(f"Simplified devotee signup successful for email: {email}")
         return SignupResponse(
-            message=(
-                "Registration successful! Please check your email for verification instructions. "
-                "After verification, you can complete your profile."
-            ),
-            email=devotee.email,
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Registration successful. Verification email sent. Please check your inbox to verify your email address.",
+            data={
+                "user_id": devotee.id,
+                "email": devotee.email,
+                "email_verified": devotee.email_verified,
+            },
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Signup validation failed: {e.detail}")
+
+        # Intelligently add data based on error type
+        response_data = None
+        if e.status_code == status.HTTP_409_CONFLICT:
+            # Conflict: Include email for reference
+            response_data = {"email": devotee_data.email}
+        elif e.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            # Rate Limited: Include retry information
+            if "blocked" in str(e.detail).lower():
+                response_data = {"retry_after_seconds": 3600}  # 1 hour for blocked IPs
+            else:
+                response_data = {"retry_after_seconds": 900}  # 15 minutes for rate limit
+
+        return SignupResponse(
+            success=False,
+            status_code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            data=response_data,
+        )
     except SQLAlchemyError as e:
         logger.error(f"Database error during devotee signup: {e!s}")
-        raise HTTPException(
+        return SignupResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred during registration",
-        ) from None
+            message="Database error occurred during registration",
+            data=None,
+        )
     except Exception as e:
         logger.error(f"Unexpected error during devotee signup: {e!s}")
-        raise HTTPException(
+        return SignupResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during registration",
-        ) from None
+            message="An unexpected error occurred during registration",
+            data=None,
+        )
 
 
-@router.post("/complete-profile", response_model=Dict[str, str])
+@router.post("/complete-profile", response_model=dict[str, str])
 async def complete_devotee_profile(
     # Required fields for profile completion
     date_of_birth: str = Form(...),  # Will be parsed to date
@@ -242,31 +546,19 @@ async def complete_devotee_profile(
 
         # Sanitize optional fields
         spouse_name = (
-            input_validator.sanitize_string(spouse_name or "", 127)
-            if spouse_name
-            else None
+            input_validator.sanitize_string(spouse_name or "", 127) if spouse_name else None
         )
         national_id = (
-            input_validator.sanitize_string(national_id or "", 50)
-            if national_id
-            else None
+            input_validator.sanitize_string(national_id or "", 50) if national_id else None
         )
-        address = (
-            input_validator.sanitize_string(address or "", 255) if address else None
-        )
+        address = input_validator.sanitize_string(address or "", 255) if address else None
         city = input_validator.sanitize_string(city or "", 100) if city else None
         state_province = (
-            input_validator.sanitize_string(state_province or "", 100)
-            if state_province
-            else None
+            input_validator.sanitize_string(state_province or "", 100) if state_province else None
         )
-        country = (
-            input_validator.sanitize_string(country or "", 100) if country else None
-        )
+        country = input_validator.sanitize_string(country or "", 100) if country else None
         postal_code = (
-            input_validator.sanitize_string(postal_code or "", 20)
-            if postal_code
-            else None
+            input_validator.sanitize_string(postal_code or "", 20) if postal_code else None
         )
 
         # Sanitize spiritual fields
@@ -281,9 +573,7 @@ async def complete_devotee_profile(
             else None
         )
         spiritual_guide = (
-            input_validator.sanitize_string(spiritual_guide or "", 127)
-            if spiritual_guide
-            else None
+            input_validator.sanitize_string(spiritual_guide or "", 127) if spiritual_guide else None
         )
         who_introduced_you_to_iskcon = (
             input_validator.sanitize_string(who_introduced_you_to_iskcon or "", 127)
@@ -291,26 +581,19 @@ async def complete_devotee_profile(
             else None
         )
         which_iskcon_center_you_first_connected_to = (
-            input_validator.sanitize_string(
-                which_iskcon_center_you_first_connected_to or "", 127
-            )
+            input_validator.sanitize_string(which_iskcon_center_you_first_connected_to or "", 127)
             if which_iskcon_center_you_first_connected_to
             else None
         )
         when_were_you_introduced_to_iskcon = (
-            input_validator.sanitize_string(
-                when_were_you_introduced_to_iskcon or "", 127
-            )
+            input_validator.sanitize_string(when_were_you_introduced_to_iskcon or "", 127)
             if when_were_you_introduced_to_iskcon
             else None
         )
 
         # Validate chanting rounds (using constant for max rounds)
         MAX_CHANTING_ROUNDS = 200
-        if (
-            chanting_number_of_rounds < 0
-            or chanting_number_of_rounds > MAX_CHANTING_ROUNDS
-        ):
+        if chanting_number_of_rounds < 0 or chanting_number_of_rounds > MAX_CHANTING_ROUNDS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Chanting rounds must be between 0 and {MAX_CHANTING_ROUNDS}",
@@ -347,9 +630,7 @@ async def complete_devotee_profile(
                 detail="date_of_birth is required and must be in YYYY-MM-DD format",
             )
         parsed_date_of_birth = parse_date_safely(date_of_birth, "date_of_birth")
-        parsed_date_of_marriage = parse_date_safely(
-            date_of_marriage, "date_of_marriage"
-        )
+        parsed_date_of_marriage = parse_date_safely(date_of_marriage, "date_of_marriage")
         parsed_initiation_date = parse_date_safely(initiation_date, "initiation_date")
         parsed_chanting_since = parse_date_safely(
             chanting_16_rounds_since, "chanting_16_rounds_since"
@@ -359,8 +640,7 @@ async def complete_devotee_profile(
         parsed_introduced_date = None
         if (
             when_were_you_introduced_to_iskcon
-            and when_were_you_introduced_to_iskcon.lower()
-            not in ["string", "null", "none", ""]
+            and when_were_you_introduced_to_iskcon.lower() not in ["string", "null", "none", ""]
         ):
             try:
                 parsed_introduced_date = datetime.strptime(
@@ -505,9 +785,7 @@ async def devotee_login(
 
 
 @router.post("/verify-email", response_model=EmailVerificationResponse)
-async def verify_devotee_email(
-    request: EmailVerificationRequest, db: Session = Depends(get_db)
-):
+async def verify_devotee_email(request: EmailVerificationRequest, db: Session = Depends(get_db)):
     """
     Verify devotee's email address using verification token.
 
@@ -531,9 +809,7 @@ async def verify_devotee_email(
         service = DevoteeService(db)
         verified_email = await service.verify_devotee_email(request.token)
 
-        logger.info(
-            f"Devotee email verification successful for token: {request.token[:8]}..."
-        )
+        logger.info(f"Devotee email verification successful for token: {request.token[:8]}...")
         return EmailVerificationResponse(
             message="Email verified successfully. You can now login to your account.",
             email=verified_email,
@@ -653,9 +929,7 @@ async def devotee_forgot_password(
 
 
 @router.post("/reset-password", response_model=ResetPasswordResponse)
-async def devotee_reset_password(
-    request: ResetPasswordRequest, db: Session = Depends(get_db)
-):
+async def devotee_reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
     """
     Reset devotee's password using reset token.
 
@@ -712,7 +986,7 @@ async def admin_reset_devotee_password(
     new_password: str,
     db: Session = Depends(get_db),
     current_user: Devotee = Depends(get_current_user),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Admin endpoint to reset any devotee's password.
 
@@ -722,9 +996,7 @@ async def admin_reset_devotee_password(
     try:
         service = DevoteeService(db)
 
-        success = service.admin_reset_password(
-            devotee_id, new_password, current_user.id
-        )
+        success = service.admin_reset_password(devotee_id, new_password, current_user.id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

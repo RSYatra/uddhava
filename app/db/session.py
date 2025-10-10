@@ -7,8 +7,8 @@ database connection utilities with production-grade reliability features.
 
 import logging
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.exc import DisconnectionError, OperationalError
@@ -36,10 +36,7 @@ def retry_db_operation(max_retries: int = 3, delay: float = 1.0):
                     return func(*args, **kwargs)
                 except (DisconnectionError, OperationalError) as e:
                     if attempt == max_retries - 1:
-                        logger.error(
-                            f"Database operation failed after {max_retries} "
-                            f"attempts: {e}"
-                        )
+                        logger.error(f"Database operation failed after {max_retries} attempts: {e}")
                         raise
                     logger.warning(
                         f"Database operation failed (attempt {attempt + 1}), "
@@ -111,7 +108,7 @@ def checkin_handler(dbapi_connection, connection_record):
 
 # Database dependency with automatic retry
 @retry_db_operation(max_retries=3, delay=1.0)
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """
     Database dependency that provides a database session.
 
@@ -133,7 +130,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 @contextmanager
-def get_db_context() -> Generator[Session, None, None]:
+def get_db_context() -> Generator[Session]:
     """
     Context manager for database sessions outside of FastAPI.
 

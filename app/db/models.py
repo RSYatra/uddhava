@@ -7,22 +7,20 @@ Enhanced devotee management system for ISKCON Radha Shyam Sundar Yatra.
 
 from datetime import date
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
     Column,
     Date,
     DateTime,
-)
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import (
     Index,
     Integer,
     String,
     Text,
     event,
 )
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
@@ -89,29 +87,19 @@ class Devotee(Base):
     # Personal Information
     legal_name = Column(String(127), nullable=False)
     date_of_birth = Column(Date, nullable=True)  # Made optional for simplified signup
-    gender = Column(
-        SQLEnum(Gender), nullable=True
-    )  # Made optional for simplified signup
+    gender = Column(SQLEnum(Gender), nullable=True)  # Made optional for simplified signup
     marital_status = Column(
         SQLEnum(MaritalStatus), nullable=True
     )  # Made optional for simplified signup
 
     # Contact Information
-    country_code = Column(
-        String(5), nullable=True
-    )  # Made optional for simplified signup
-    mobile_number = Column(
-        String(15), nullable=True
-    )  # Made optional for simplified signup
+    country_code = Column(String(5), nullable=True)  # Made optional for simplified signup
+    mobile_number = Column(String(15), nullable=True)  # Made optional for simplified signup
     national_id = Column(String(50), nullable=True)
 
     # Family Information
-    father_name = Column(
-        String(127), nullable=True
-    )  # Made optional for simplified signup
-    mother_name = Column(
-        String(127), nullable=True
-    )  # Made optional for simplified signup
+    father_name = Column(String(127), nullable=True)  # Made optional for simplified signup
+    mother_name = Column(String(127), nullable=True)  # Made optional for simplified signup
     spouse_name = Column(String(127), nullable=True)
     date_of_marriage = Column(Date, nullable=True)
     children = Column(JSON, nullable=True)  # Flexible JSON structure for children info
@@ -164,9 +152,7 @@ class Devotee(Base):
     )
 
     def __repr__(self):
-        return (
-            f"<Devotee(id={self.id}, email={self.email}, legal_name={self.legal_name})>"
-        )
+        return f"<Devotee(id={self.id}, email={self.email}, legal_name={self.legal_name})>"
 
     @property
     def is_admin(self) -> bool:
@@ -223,7 +209,7 @@ class Devotee(Base):
         return 0
 
     @property
-    def spiritual_journey_years(self) -> Optional[int]:
+    def spiritual_journey_years(self) -> int | None:
         """Calculate years since introduction to ISKCON."""
         if not self.when_were_you_introduced_to_iskcon:
             return None
@@ -243,7 +229,7 @@ class Devotee(Base):
         """Check if devotee has Brahmin initiation."""
         return self.initiation_status == InitiationStatus.BRAHMIN
 
-    def get_children_info(self) -> List[Dict[str, Any]]:
+    def get_children_info(self) -> list[dict[str, Any]]:
         """Get structured children information."""
         if not self.children:
             return []
@@ -256,7 +242,7 @@ class Devotee(Base):
 
         return []
 
-    def set_children_info(self, children_data: List[Dict[str, Any]]) -> None:
+    def set_children_info(self, children_data: list[dict[str, Any]]) -> None:
         """Set children information with proper structure."""
         self.children = {
             "count": len(children_data),

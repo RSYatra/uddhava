@@ -7,7 +7,6 @@ and utilities to ensure consistent security practices across the application.
 
 import secrets
 from enum import Enum
-from typing import List, Set
 
 
 class SecurityLevel(Enum):
@@ -228,10 +227,10 @@ class SecurityConfig:
     }
 
     # IP whitelist for admin operations (empty means no restriction)
-    ADMIN_IP_WHITELIST: Set[str] = set()
+    ADMIN_IP_WHITELIST: set[str] = set()
 
     # Blocked IP addresses (can be populated from threat intelligence)
-    BLOCKED_IPS: Set[str] = set()
+    BLOCKED_IPS: set[str] = set()
 
     # Session security
     SESSION_COOKIE_SECURE = True  # HTTPS only
@@ -285,7 +284,7 @@ class SecurityUtils:
         return True
 
     @staticmethod
-    def detect_attack_patterns(text: str) -> List[str]:
+    def detect_attack_patterns(text: str) -> list[str]:
         """Detect attack patterns in text and return detected pattern types."""
         detected_patterns = []
         text_lower = text.lower()
@@ -306,8 +305,7 @@ class SecurityUtils:
 
         user_agent_lower = user_agent.lower()
         return any(
-            suspicious in user_agent_lower
-            for suspicious in SecurityConfig.SUSPICIOUS_USER_AGENTS
+            suspicious in user_agent_lower for suspicious in SecurityConfig.SUSPICIOUS_USER_AGENTS
         )
 
     @staticmethod

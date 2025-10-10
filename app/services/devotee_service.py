@@ -8,10 +8,9 @@ Designed for high performance with 100K users.
 
 import logging
 import secrets
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from math import ceil
 from pathlib import Path
-from typing import List, Optional
 
 from fastapi import HTTPException, UploadFile, status
 from pydantic import EmailStr
@@ -58,7 +57,7 @@ class DevoteeService:
         self,
         db: Session,
         devotee_data: DevoteeCreate,
-        photo: Optional[UploadFile] = None,
+        photo: UploadFile | None = None,
     ) -> Devotee:
         """
         Create a new devotee with comprehensive validation and optimization.
@@ -116,40 +115,28 @@ class DevoteeService:
             # Family Information
             father_name=devotee_data.father_name.strip(),
             mother_name=devotee_data.mother_name.strip(),
-            spouse_name=(
-                devotee_data.spouse_name.strip() if devotee_data.spouse_name else None
-            ),
+            spouse_name=(devotee_data.spouse_name.strip() if devotee_data.spouse_name else None),
             date_of_marriage=devotee_data.date_of_marriage,
             children=children_json,
             # Location Information
             address=devotee_data.address.strip() if devotee_data.address else None,
             city=devotee_data.city.strip() if devotee_data.city else None,
             state_province=(
-                devotee_data.state_province.strip()
-                if devotee_data.state_province
-                else None
+                devotee_data.state_province.strip() if devotee_data.state_province else None
             ),
             country=devotee_data.country.strip() if devotee_data.country else None,
-            postal_code=(
-                devotee_data.postal_code.strip() if devotee_data.postal_code else None
-            ),
+            postal_code=(devotee_data.postal_code.strip() if devotee_data.postal_code else None),
             # ISKCON Spiritual Information
             initiation_status=devotee_data.initiation_status,
             spiritual_master=(
-                devotee_data.spiritual_master.strip()
-                if devotee_data.spiritual_master
-                else None
+                devotee_data.spiritual_master.strip() if devotee_data.spiritual_master else None
             ),
             initiation_date=devotee_data.initiation_date,
             initiation_place=(
-                devotee_data.initiation_place.strip()
-                if devotee_data.initiation_place
-                else None
+                devotee_data.initiation_place.strip() if devotee_data.initiation_place else None
             ),
             spiritual_guide=(
-                devotee_data.spiritual_guide.strip()
-                if devotee_data.spiritual_guide
-                else None
+                devotee_data.spiritual_guide.strip() if devotee_data.spiritual_guide else None
             ),
             # ISKCON Journey
             when_were_you_introduced_to_iskcon=devotee_data.when_were_you_introduced_to_iskcon,
@@ -168,9 +155,7 @@ class DevoteeService:
             chanting_16_rounds_since=devotee_data.chanting_16_rounds_since,
             # Devotional Education
             devotional_courses=(
-                devotee_data.devotional_courses.strip()
-                if devotee_data.devotional_courses
-                else None
+                devotee_data.devotional_courses.strip() if devotee_data.devotional_courses else None
             ),
             # Photo
             photo=photo_path,
@@ -227,11 +212,11 @@ class DevoteeService:
             has_prev=has_prev,
         )
 
-    def get_devotee_by_id(self, db: Session, devotee_id: int) -> Optional[Devotee]:
+    def get_devotee_by_id(self, db: Session, devotee_id: int) -> Devotee | None:
         """Get devotee by ID with optimized query."""
         return db.query(Devotee).filter(Devotee.id == devotee_id).first()
 
-    def get_devotee_by_email(self, db: Session, email: EmailStr) -> Optional[Devotee]:
+    def get_devotee_by_email(self, db: Session, email: EmailStr) -> Devotee | None:
         """Get devotee by email with optimized query."""
         return db.query(Devotee).filter(Devotee.email == email.lower()).first()
 
@@ -240,8 +225,8 @@ class DevoteeService:
         db: Session,
         devotee_id: int,
         devotee_update: DevoteeUpdate,
-        photo: Optional[UploadFile] = None,
-    ) -> Optional[Devotee]:
+        photo: UploadFile | None = None,
+    ) -> Devotee | None:
         """
         Update devotee information with validation and business rules.
 
@@ -308,9 +293,7 @@ class DevoteeService:
         # Recently joined (last 30 days)
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
         recently_joined = (
-            db.query(func.count(Devotee.id))
-            .filter(Devotee.created_at >= thirty_days_ago)
-            .scalar()
+            db.query(func.count(Devotee.id)).filter(Devotee.created_at >= thirty_days_ago).scalar()
         )
 
         # Statistics by country (top 10)
@@ -333,9 +316,7 @@ class DevoteeService:
 
         # Statistics by gender
         by_gender = dict(
-            db.query(Devotee.gender, func.count(Devotee.id))
-            .group_by(Devotee.gender)
-            .all()
+            db.query(Devotee.gender, func.count(Devotee.id)).group_by(Devotee.gender).all()
         )
 
         # Statistics by marital status
@@ -347,9 +328,9 @@ class DevoteeService:
 
         # Average age calculation
         avg_age_query = db.query(
-            func.avg(
-                func.timestampdiff(text("YEAR"), Devotee.date_of_birth, func.curdate())
-            ).label("avg_age")
+            func.avg(func.timestampdiff(text("YEAR"), Devotee.date_of_birth, func.curdate())).label(
+                "avg_age"
+            )
         ).first()
         average_age = float(avg_age_query.avg_age) if avg_age_query.avg_age else None
 
@@ -376,7 +357,7 @@ class DevoteeService:
 
     def search_devotees_by_text(
         self, db: Session, search_text: str, limit: int = 20
-    ) -> List[Devotee]:
+    ) -> list[Devotee]:
         """
         Perform fast text search across multiple fields.
         Uses optimized LIKE queries with proper indexing.
@@ -410,10 +391,10 @@ class DevoteeService:
     def get_devotees_by_location(
         self,
         db: Session,
-        country: Optional[str] = None,
-        state: Optional[str] = None,
-        city: Optional[str] = None,
-    ) -> List[Devotee]:
+        country: str | None = None,
+        state: str | None = None,
+        city: str | None = None,
+    ) -> list[Devotee]:
         """
         Get devotees by location using optimized queries with proper indexes.
 
@@ -437,9 +418,7 @@ class DevoteeService:
 
         return query.order_by(Devotee.legal_name).all()
 
-    def get_devotees_by_spiritual_master(
-        self, db: Session, spiritual_master: str
-    ) -> List[Devotee]:
+    def get_devotees_by_spiritual_master(self, db: Session, spiritual_master: str) -> list[Devotee]:
         """Get devotees by spiritual master with optimized query."""
         return (
             db.query(Devotee)
@@ -453,9 +432,7 @@ class DevoteeService:
         """Create an unverified devotee with minimal information and send verification email."""
         # Check if devotee already exists
         existing_devotee = (
-            self.db.query(Devotee)
-            .filter(Devotee.email == devotee_data.email.lower())
-            .first()
+            self.db.query(Devotee).filter(Devotee.email == devotee_data.email.lower()).first()
         )
 
         if existing_devotee:
@@ -473,7 +450,7 @@ class DevoteeService:
 
         # Generate secure verification token
         verification_token = secrets.token_urlsafe(32)
-        verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        verification_expires = datetime.now(UTC) + timedelta(hours=24)
 
         # Create new devotee with minimal information (unverified)
         new_devotee = Devotee(
@@ -501,9 +478,7 @@ class DevoteeService:
             self.db.commit()
             self.db.refresh(new_devotee)
 
-            logger.info(
-                f"Created simple unverified devotee with email: {devotee_data.email}"
-            )
+            logger.info(f"Created simple unverified devotee with email: {devotee_data.email}")
             return new_devotee
 
         except Exception as e:
@@ -515,7 +490,7 @@ class DevoteeService:
             ) from None
 
     async def create_unverified_devotee(
-        self, devotee_data: DevoteeCreate, photo: Optional[UploadFile] = None
+        self, devotee_data: DevoteeCreate, photo: UploadFile | None = None
     ) -> Devotee:
         """Create an unverified devotee and send verification email."""
         # Check if devotee already exists
@@ -536,10 +511,8 @@ class DevoteeService:
         # Generate secure verification token
         from app.core.auth_security import token_manager
 
-        verification_token = token_manager.generate_verification_token(
-            devotee_data.email
-        )
-        verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        verification_token = token_manager.generate_verification_token(devotee_data.email)
+        verification_expires = datetime.now(UTC) + timedelta(hours=24)
 
         # Create new devotee (unverified)
         devotee_dict = devotee_data.model_dump()
@@ -584,9 +557,7 @@ class DevoteeService:
         Returns:
             str: The verified email address
         """
-        devotee = (
-            self.db.query(Devotee).filter(Devotee.verification_token == token).first()
-        )
+        devotee = self.db.query(Devotee).filter(Devotee.verification_token == token).first()
 
         if not devotee:
             raise HTTPException(
@@ -603,12 +574,12 @@ class DevoteeService:
 
         # Check if token is expired with proper timezone handling
         if devotee.verification_expires is not None:
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(UTC)
             expires_at = devotee.verification_expires
 
             # Handle timezone awareness - if tzinfo is None, assume UTC
             if hasattr(expires_at, "tzinfo") and expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
+                expires_at = expires_at.replace(tzinfo=UTC)
 
             if expires_at < current_time:
                 raise HTTPException(
@@ -634,9 +605,7 @@ class DevoteeService:
                     verified_email, devotee.legal_name
                 )
             except Exception as email_error:
-                logger.warning(
-                    f"Failed to send verification success email: {email_error}"
-                )
+                logger.warning(f"Failed to send verification success email: {email_error}")
                 # Continue with verification even if email fails
 
             logger.info(f"Verified devotee email: {verified_email}")
@@ -670,9 +639,7 @@ class DevoteeService:
         try:
             # Generate new verification token
             devotee.verification_token = secrets.token_urlsafe(32)
-            devotee.verification_expires = datetime.now(timezone.utc) + timedelta(
-                hours=24
-            )
+            devotee.verification_expires = datetime.now(UTC) + timedelta(hours=24)
 
             await self._send_verification_email(devotee)
 
@@ -713,7 +680,7 @@ class DevoteeService:
         try:
             # Generate reset token
             devotee.reset_token = secrets.token_urlsafe(32)
-            devotee.reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+            devotee.reset_expires = datetime.now(UTC) + timedelta(hours=1)
 
             # Send reset email
             email_service = EmailService()
@@ -746,7 +713,7 @@ class DevoteeService:
             )
 
         # Check if token is expired
-        if devotee.reset_expires < datetime.now(timezone.utc):
+        if devotee.reset_expires < datetime.now(UTC):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Reset token has expired",
@@ -770,9 +737,7 @@ class DevoteeService:
                 detail="Failed to reset password",
             ) from None
 
-    def admin_reset_password(
-        self, devotee_id: int, new_password: str, admin_id: int
-    ) -> bool:
+    def admin_reset_password(self, devotee_id: int, new_password: str, admin_id: int) -> bool:
         """Admin function to reset any devotee's password."""
         devotee = self.get_devotee_by_id(self.db, devotee_id)
         if not devotee:
@@ -796,7 +761,7 @@ class DevoteeService:
                 detail="Failed to reset password",
             ) from None
 
-    def authenticate_devotee(self, email: str, password: str) -> Optional[Devotee]:
+    def authenticate_devotee(self, email: str, password: str) -> Devotee | None:
         """Authenticate devotee with email and password."""
         devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
@@ -858,26 +823,18 @@ class DevoteeService:
             today = date.today()
 
             if filters.min_age:
-                max_birth_date = date(
-                    today.year - filters.min_age, today.month, today.day
-                )
+                max_birth_date = date(today.year - filters.min_age, today.month, today.day)
                 query = query.filter(Devotee.date_of_birth <= max_birth_date)
 
             if filters.max_age:
-                min_birth_date = date(
-                    today.year - filters.max_age, today.month, today.day
-                )
+                min_birth_date = date(today.year - filters.max_age, today.month, today.day)
                 query = query.filter(Devotee.date_of_birth >= min_birth_date)
 
         # Chanting rounds filters
         if filters.min_rounds:
-            query = query.filter(
-                Devotee.chanting_number_of_rounds >= filters.min_rounds
-            )
+            query = query.filter(Devotee.chanting_number_of_rounds >= filters.min_rounds)
         if filters.max_rounds:
-            query = query.filter(
-                Devotee.chanting_number_of_rounds <= filters.max_rounds
-            )
+            query = query.filter(Devotee.chanting_number_of_rounds <= filters.max_rounds)
 
         return query
 
@@ -948,9 +905,7 @@ class DevoteeService:
                     spouse_name = None
 
             # Check if spouse name is missing or empty
-            if not spouse_name or (
-                isinstance(spouse_name, str) and spouse_name.strip() == ""
-            ):
+            if not spouse_name or (isinstance(spouse_name, str) and spouse_name.strip() == ""):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Spouse name is required for married devotees",
@@ -966,9 +921,7 @@ class DevoteeService:
             )
 
         # Generate filename
-        file_extension = (
-            photo.filename.split(".")[-1].lower() if photo.filename else "jpg"
-        )
+        file_extension = photo.filename.split(".")[-1].lower() if photo.filename else "jpg"
         safe_email = devotee_email.replace("@", "_at_").replace(".", "_")
         timestamp = int(datetime.utcnow().timestamp())
         filename = f"devotee_{safe_email}_{timestamp}.{file_extension}"
@@ -994,7 +947,7 @@ class DevoteeService:
         self,
         user_id: int,
         profile_data: dict,
-        photo: Optional[UploadFile] = None,
+        photo: UploadFile | None = None,
     ) -> bool:
         """Complete devotee profile after email verification."""
         devotee = self.get_devotee_by_id(self.db, user_id)

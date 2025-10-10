@@ -8,7 +8,7 @@ including custom validators, input sanitization, and security checks.
 import json
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, status
@@ -40,9 +40,7 @@ class ValidationUtils:
     def validate_username(username: str) -> str:
         """Validate username format."""
         if not ValidationUtils.USERNAME_PATTERN.match(username):
-            raise ValueError(
-                "Username must be 3-20 characters, alphanumeric and underscore only"
-            )
+            raise ValueError("Username must be 3-20 characters, alphanumeric and underscore only")
         return username.lower()
 
     @staticmethod
@@ -79,7 +77,7 @@ class EnhancedValidationMixin(BaseModel):
     """
 
     @model_validator(mode="before")
-    def sanitize_inputs(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def sanitize_inputs(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Sanitize string inputs to prevent injection attacks."""
         if isinstance(values, dict):
             sanitized = {}
@@ -126,7 +124,7 @@ class PaginationParams(BaseModel):
 class SortParams(BaseModel):
     """Standardized sorting parameters."""
 
-    sort_by: Optional[str] = None
+    sort_by: str | None = None
     sort_order: str = "asc"
 
     @field_validator("sort_order")
@@ -198,9 +196,7 @@ class FileUploadValidation:
             )
 
 
-def validate_json_request(
-    data: Dict[str, Any], max_size: int = 1024 * 1024
-) -> Dict[str, Any]:
+def validate_json_request(data: dict[str, Any], max_size: int = 1024 * 1024) -> dict[str, Any]:
     """
     Validate JSON request size and structure.
 

@@ -9,7 +9,7 @@ fields and migrates existing user data. It includes proper indexing for performa
 optimization for 100K users.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
@@ -18,9 +18,9 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20250921_0001"
-down_revision: Union[str, None] = "20250917_0003"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "20250917_0003"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -126,12 +126,8 @@ def upgrade() -> None:
     # Create performance optimization indexes
     with op.batch_alter_table("devotees") as batch_op:
         batch_op.create_index("idx_city_country", ["city", "country"])
-        batch_op.create_index(
-            "idx_location_search", ["country", "state_province", "city"]
-        )
-        batch_op.create_index(
-            "idx_spiritual_info", ["initiation_status", "spiritual_master"]
-        )
+        batch_op.create_index("idx_location_search", ["country", "state_province", "city"])
+        batch_op.create_index("idx_spiritual_info", ["initiation_status", "spiritual_master"])
         batch_op.create_index("idx_name_search", ["legal_name"])
         batch_op.create_index("idx_mobile_search", ["country_code", "mobile_number"])
         batch_op.create_index("ix_devotees_city", ["city"])
