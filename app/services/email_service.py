@@ -201,11 +201,7 @@ class EmailService:
             subject = "Email Verified - Radha Shyam Sundar Seva"
 
             # Generate login URL
-            login_url = (
-                settings.app_url_base
-                if hasattr(settings, "app_url_base")
-                else "https://your-app-url.com/login"
-            )
+            login_url = settings.frontend_login_url
 
             # Load and render HTML template from file
             html_template_content = self._load_template("email_verification_success.html")

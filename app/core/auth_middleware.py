@@ -60,7 +60,7 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
 
         # 1. Request size limiting
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB limit
+        if content_length and int(content_length) > 20 * 1024 * 1024:  # 20MB limit
             logger.warning(f"Request too large: {content_length} bytes from {request.client.host}")
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

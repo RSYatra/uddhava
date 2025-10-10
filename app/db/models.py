@@ -133,6 +133,12 @@ class Devotee(Base):
     # Devotional Education
     devotional_courses = Column(Text, nullable=True)
 
+    # File Uploads
+    profile_photo_path = Column(String(512), nullable=True)  # Profile photo relative path
+    uploaded_files = Column(
+        JSON, nullable=True
+    )  # Array of file metadata: [{name, path, type, size, uploaded_at}]
+
     # System Fields
     role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.USER)
     password_reset_token = Column(String(255), nullable=True)

@@ -64,7 +64,14 @@ class AuthSecurityManager:
     def _is_ip_blocked(self, ip: str) -> bool:
         """Check if IP is currently blocked."""
         if ip in self._blocked_ips:
-            if datetime.now(UTC) < self._blocked_ips[ip]:
+            block_until = self._blocked_ips[ip]
+            current_time = datetime.now(UTC)
+
+            # Both datetimes are in-memory and UTC-aware, but add safety check
+            if block_until.tzinfo is None:
+                block_until = block_until.replace(tzinfo=UTC)
+
+            if current_time < block_until:
                 return True
             del self._blocked_ips[ip]
         return False
