@@ -7,17 +7,21 @@ login, email verification, password reset, and JWT token management.
 
 import logging
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
     Depends,
+    File,
     Form,
     HTTPException,
     Request,
+    UploadFile,
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from pydantic import Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -484,56 +488,308 @@ async def devotee_signup(
         )
 
 
-@router.post("/complete-profile", response_model=dict[str, str])
+@router.post(
+    "/complete-profile",
+    summary="Complete Devotee Profile",
+    description="""
+Complete your devotee profile with personal, family, spiritual, and location details.
+
+**REQUIRED FIELDS:**
+
+All required fields must be provided to complete profile registration.
+
+**OPTIONAL FIELDS:**
+
+Optional fields can be skipped but are recommended for a complete profile.
+
+**FILE UPLOADS:**
+
+- **Profile Photo:** Optional, max 5MB, formats: .jpg, .jpeg, .png, .gif, .webp
+- **Documents:** Optional, max 5 documents, 5MB each, formats: .pdf, .doc, .docx, .txt
+- **Total Limit:** 20MB per user across all files
+
+**AUTHENTICATION:**
+
+Requires valid JWT token (Bearer token) in Authorization header.
+    """,
+    responses={
+        200: {
+            "description": "Profile completed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Profile completed successfully",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Invalid input data or validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 400,
+                        "message": "Invalid date format. Use YYYY-MM-DD",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        401: {"description": "Not authenticated - missing or invalid token"},
+        413: {
+            "description": "File too large or total size limit exceeded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 413,
+                        "message": "Total file size exceeds 20MB limit",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        422: {"description": "Validation error - incorrect field format"},
+    },
+    tags=["Devotee Authentication"],
+)
 async def complete_devotee_profile(
-    # Required fields for profile completion
-    date_of_birth: str = Form(...),  # Will be parsed to date
-    gender: str = Form(...),
-    marital_status: str = Form(...),
-    country_code: str = Form(...),
-    mobile_number: str = Form(...),
-    father_name: str = Form(...),
-    mother_name: str = Form(...),
-    # Optional fields
-    spouse_name: str = Form(None),
-    date_of_marriage: str = Form(None),
-    national_id: str = Form(None),
-    address: str = Form(None),
-    city: str = Form(None),
-    state_province: str = Form(None),
-    country: str = Form(None),
-    postal_code: str = Form(None),
-    # Spiritual fields
-    initiation_status: str = Form(None),
-    spiritual_master: str = Form(None),
-    initiation_date: str = Form(None),
-    initiation_place: str = Form(None),
-    spiritual_guide: str = Form(None),
-    # ISKCON Journey
-    when_were_you_introduced_to_iskcon: str = Form(None),
-    who_introduced_you_to_iskcon: str = Form(None),
-    which_iskcon_center_you_first_connected_to: str = Form(None),
-    # Chanting
-    chanting_number_of_rounds: int = Form(16),
-    chanting_16_rounds_since: str = Form(None),
-    # Education
-    devotional_courses: str = Form(None),
+    # REQUIRED: Personal Information
+    date_of_birth: Annotated[
+        str,
+        Form(
+            description="Date of birth in YYYY-MM-DD format",
+            min_length=10,
+            max_length=10,
+        ),
+        Field(example="1990-05-15"),
+    ],
+    gender: Annotated[
+        str,
+        Form(
+            description="Gender: M (Male) or F (Female)",
+            pattern="^[MF]$",
+        ),
+        Field(example="M"),
+    ],
+    marital_status: Annotated[
+        str,
+        Form(description="Marital status: SINGLE, MARRIED, DIVORCED, WIDOWED, SEPARATED, OTHERS"),
+        Field(example="MARRIED"),
+    ],
+    country_code: Annotated[
+        str,
+        Form(
+            description="Country calling code with + prefix",
+            pattern=r"^\+\d{1,4}$",
+        ),
+        Field(example="+91"),
+    ],
+    mobile_number: Annotated[
+        str,
+        Form(
+            description="Mobile number (10-15 digits, no spaces or special characters)",
+            min_length=10,
+            max_length=15,
+        ),
+        Field(example="9876543210"),
+    ],
+    father_name: Annotated[
+        str,
+        Form(
+            description="Father's full name",
+            max_length=127,
+        ),
+        Field(example="Ram Kumar Sharma"),
+    ],
+    mother_name: Annotated[
+        str,
+        Form(
+            description="Mother's full name",
+            max_length=127,
+        ),
+        Field(example="Sita Sharma"),
+    ],
+    # OPTIONAL: Family Information
+    spouse_name: Annotated[
+        str | None,
+        Form(
+            description="Spouse name (required if marital status is MARRIED)",
+            max_length=127,
+        ),
+        Field(default=None, example="Radha Sharma"),
+    ] = None,
+    date_of_marriage: Annotated[
+        str | None,
+        Form(description="Date of marriage in YYYY-MM-DD format (required if married)"),
+        Field(default=None, example="2015-06-20"),
+    ] = None,
+    national_id: Annotated[
+        str | None,
+        Form(
+            description="National ID or passport number",
+            max_length=50,
+        ),
+        Field(default=None, example="ABCDE1234F"),
+    ] = None,
+    # OPTIONAL: Location Information
+    address: Annotated[
+        str | None,
+        Form(
+            description="Full residential address",
+            max_length=255,
+        ),
+        Field(default=None, example="123 Main Street, Apartment 4B"),
+    ] = None,
+    city: Annotated[
+        str | None,
+        Form(
+            description="City name",
+            max_length=100,
+        ),
+        Field(default=None, example="Mumbai"),
+    ] = None,
+    state_province: Annotated[
+        str | None,
+        Form(
+            description="State or province name",
+            max_length=100,
+        ),
+        Field(default=None, example="Maharashtra"),
+    ] = None,
+    country: Annotated[
+        str | None,
+        Form(
+            description="Country name",
+            max_length=100,
+        ),
+        Field(default=None, example="India"),
+    ] = None,
+    postal_code: Annotated[
+        str | None,
+        Form(
+            description="Postal or ZIP code",
+            max_length=20,
+        ),
+        Field(default=None, example="400001"),
+    ] = None,
+    # OPTIONAL: Spiritual Information
+    initiation_status: Annotated[
+        str | None,
+        Form(description="ISKCON initiation status: ASPIRING, HARINAM, or BRAHMIN"),
+        Field(default=None, example="HARINAM"),
+    ] = None,
+    spiritual_master: Annotated[
+        str | None,
+        Form(
+            description="Name of your spiritual master (Guru)",
+            max_length=255,
+        ),
+        Field(default=None, example="His Holiness Radhanath Swami"),
+    ] = None,
+    initiation_date: Annotated[
+        str | None,
+        Form(description="Date of initiation in YYYY-MM-DD format"),
+        Field(default=None, example="2018-08-15"),
+    ] = None,
+    initiation_place: Annotated[
+        str | None,
+        Form(
+            description="Place where you received initiation",
+            max_length=127,
+        ),
+        Field(default=None, example="Vrindavan, India"),
+    ] = None,
+    spiritual_guide: Annotated[
+        str | None,
+        Form(
+            description="Name of your spiritual guide or counselor",
+            max_length=255,
+        ),
+        Field(default=None, example="Prabhu Krishna Das"),
+    ] = None,
+    # OPTIONAL: ISKCON Journey
+    when_were_you_introduced_to_iskcon: Annotated[
+        str | None,
+        Form(
+            description="When you first learned about ISKCON (year or description)",
+            max_length=255,
+        ),
+        Field(default=None, example="2010"),
+    ] = None,
+    who_introduced_you_to_iskcon: Annotated[
+        str | None,
+        Form(
+            description="Person who introduced you to ISKCON",
+            max_length=255,
+        ),
+        Field(default=None, example="My friend Prashant"),
+    ] = None,
+    which_iskcon_center_you_first_connected_to: Annotated[
+        str | None,
+        Form(
+            description="First ISKCON temple or center you visited",
+            max_length=255,
+        ),
+        Field(default=None, example="ISKCON Vrindavan"),
+    ] = None,
+    # OPTIONAL: Chanting Practice
+    chanting_number_of_rounds: Annotated[
+        int,
+        Form(
+            description="Number of rounds you chant daily (default: 16)",
+            ge=0,
+            le=100,
+        ),
+        Field(default=16, example=16),
+    ] = 16,
+    chanting_16_rounds_since: Annotated[
+        str | None,
+        Form(description="Date when you started chanting 16 rounds daily (YYYY-MM-DD)"),
+        Field(default=None, example="2015-01-01"),
+    ] = None,
+    # OPTIONAL: Education
+    devotional_courses: Annotated[
+        str | None,
+        Form(
+            description="List of ISKCON devotional courses completed (comma-separated)",
+            max_length=500,
+        ),
+        Field(default=None, example="Bhakti Shastri, Bhakti Vaibhava"),
+    ] = None,
+    # OPTIONAL: File Uploads
+    profile_photo: UploadFile | None = File(
+        default=None,
+        description="Profile photo (max 5MB, formats: .jpg, .jpeg, .png, .gif, .webp)",
+    ),
+    document_1: UploadFile | str | None = File(
+        default=None,
+        description="Document 1 (max 5MB, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)",
+    ),
+    document_2: UploadFile | str | None = File(
+        default=None,
+        description="Document 2 (max 5MB, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)",
+    ),
+    document_3: UploadFile | str | None = File(
+        default=None,
+        description="Document 3 (max 5MB, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)",
+    ),
+    document_4: UploadFile | str | None = File(
+        default=None,
+        description="Document 4 (max 5MB, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)",
+    ),
+    document_5: UploadFile | str | None = File(
+        default=None,
+        description="Document 5 (max 5MB, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)",
+    ),
     # Authentication and database dependencies
     current_devotee: Devotee = Depends(get_current_devotee),
     db: Session = Depends(get_db),
 ):
-    """
-    Complete devotee profile after initial signup and email verification.
-
-    This endpoint allows verified devotees to add detailed information
-    to their profile including personal, family, spiritual, and location details.
-
-    **Security Features:**
-    - Requires authenticated user (current_user dependency)
-    - Input validation and sanitization for all fields
-    - File upload security checks for photos
-    - Users can only complete their own profile
-    """
     try:
         # Get the authenticated devotee's ID
         user_id = current_devotee.id
@@ -685,14 +941,42 @@ async def complete_devotee_profile(
             "devotional_courses": devotional_courses,
         }
 
-        # Complete the profile using the authenticated user's ID
-        success = await service.complete_devotee_profile(user_id, profile_data)
+        # Collect uploaded files
+        # Note: curl/Swagger UI may send empty strings for unselected file fields
+        uploaded_documents = []
+        for doc in [document_1, document_2, document_3, document_4, document_5]:
+            # Check if it's an UploadFile by checking for filename attribute (more reliable than isinstance)
+            if doc and hasattr(doc, "filename") and doc.filename:
+                uploaded_documents.append(doc)
+
+        logger.info(f"Collected {len(uploaded_documents)} document(s) for upload")
+        if profile_photo and hasattr(profile_photo, "filename") and profile_photo.filename:
+            logger.info(f"Profile photo received: {profile_photo.filename}")
+
+        # Complete the profile using the authenticated user's ID with files
+        success = await service.complete_devotee_profile(
+            user_id=user_id,
+            profile_data=profile_data,
+            profile_photo=profile_photo
+            if profile_photo and hasattr(profile_photo, "filename") and profile_photo.filename
+            else None,
+            uploaded_files=uploaded_documents if uploaded_documents else None,
+        )
 
         if success:
-            logger.info(f"Profile completed successfully for user {user_id}")
+            files_count = (
+                1
+                if profile_photo and hasattr(profile_photo, "filename") and profile_photo.filename
+                else 0
+            ) + len(uploaded_documents)
+            logger.info(
+                f"Profile completed successfully for user {user_id} with {files_count} file(s)"
+            )
             return {
-                "message": "Profile completed successfully",
-                "status": "success",
+                "success": True,
+                "status_code": 200,
+                "message": f"Profile completed successfully. {files_count} file(s) uploaded.",
+                "data": None,
             }
         logger.warning(f"Failed to complete profile for user {user_id}")
         raise HTTPException(

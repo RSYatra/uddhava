@@ -7,6 +7,7 @@ Optimized for performance with 100K users.
 """
 
 import logging
+from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -15,9 +16,11 @@ from fastapi import (
     Query,
     status,
 )
+from fastapi.responses import FileResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.dependencies import check_resource_access, require_admin
 from app.core.security import get_current_user
 from app.db.models import Devotee, Gender, InitiationStatus, MaritalStatus, UserRole
@@ -701,3 +704,88 @@ async def validate_email_availability(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Email validation failed",
         )
+
+
+@router.get(
+    "/{devotee_id}/files/{file_type}/{filename}",
+    summary="Download Devotee File",
+    description="""
+Download a devotee's uploaded file (profile photo or document).
+
+**File Types:**
+- `photos`: Profile photos
+- `documents`: Uploaded documents
+
+**Access Control:**
+- Users can download their own files
+- Admin users can download any user's files
+
+**Security:**
+- Path traversal protection
+- File existence validation
+- Access control enforcement
+    """,
+)
+async def download_devotee_file(
+    devotee_id: int,
+    file_type: str,
+    filename: str,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Download a devotee's uploaded file with security checks.
+
+    Args:
+        devotee_id: The devotee's user ID
+        file_type: Type of file - "photos" or "documents"
+        filename: Name of the file to download
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        FileResponse: The requested file
+
+    Raises:
+        HTTPException: For access denied, invalid file type, or file not found
+    """
+    # Check access: admin or owner
+    check_resource_access(current_user, devotee_id, "file")
+
+    # Validate file_type
+    if file_type not in ["photos", "documents"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Must be 'photos' or 'documents'",
+        )
+
+    # Construct file path
+    file_path = Path(settings.upload_directory) / file_type / str(devotee_id) / filename
+
+    # Security check: ensure path is within allowed directory
+    try:
+        file_path.resolve().relative_to(Path(settings.upload_directory).resolve())
+    except ValueError:
+        logger.warning(
+            f"Security violation: User {current_user.id} attempted path traversal with: {filename}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Invalid file path",
+        )
+
+    # Check if file exists
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    logger.info(f"User {current_user.id} downloading file: {file_type}/{devotee_id}/{filename}")
+
+    # Return file with appropriate media type
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/octet-stream",
+    )

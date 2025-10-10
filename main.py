@@ -37,6 +37,7 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
     ValidationError,
 )
+from app.core.openapi import get_custom_openapi
 from app.db.models import Base
 from app.db.session import engine
 
@@ -131,6 +132,9 @@ def create_application() -> FastAPI:
     # Register routes
     register_routes(app)
 
+    # Apply custom OpenAPI schema for enhanced Swagger UI documentation
+    app.openapi = lambda: get_custom_openapi(app)
+
     return app
 
 
@@ -158,16 +162,30 @@ def setup_middleware(app: FastAPI) -> None:
     app.add_middleware(LoggingMiddleware)
 
     # CORS middleware
-    allowed_origins = ["http://localhost:3000", "http://localhost:8000"]
-    if not settings.is_production:
-        allowed_origins.append("*")
+    # Note: Cannot use "*" with allow_credentials=True (CORS specification)
+    # Instead, explicitly list allowed origins or use allow_origin_regex
+    if settings.is_production:
+        # Production: Only allow specific origins from config
+        allowed_origins = settings.allowed_origins if settings.allowed_origins != ["*"] else []
+    else:
+        # Development: Allow common local development origins
+        allowed_origins = [
+            "http://localhost:3000",
+            "http://localhost:8000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8000",
+            "http://localhost:8080",  # Common alternative port
+            "http://127.0.0.1:8080",
+        ]
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["*"],
+        expose_headers=["*"],  # Allow frontend to read all response headers
+        max_age=3600,  # Cache preflight requests for 1 hour
     )
 
     # Trusted host middleware for production

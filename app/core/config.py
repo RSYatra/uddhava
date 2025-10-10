@@ -39,10 +39,24 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
 
-    # File Upload
-    max_upload_size_mb: int = 10
-    upload_directory: str = "static"
-    allowed_extensions: list = [".jpg", ".jpeg", ".png", ".gif", ".bmp"]
+    # File Upload Configuration
+    max_upload_size_mb: int = 20  # Total size limit per user
+    max_file_size_mb: int = 5  # Individual file size limit
+    max_files_per_user: int = 5  # Maximum number of files per user
+    upload_directory: str = "uploads"  # Base directory for uploads
+    allowed_image_extensions: list = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+    # Documents can be PDFs, Office docs, text files, or images (for scanned documents)
+    allowed_document_extensions: list = [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+    ]
 
     # CORS
     allowed_origins: list = ["*"]
@@ -114,8 +128,18 @@ class Settings(BaseSettings):
 
     @property
     def max_upload_size_bytes(self) -> int:
-        """Get max upload size in bytes."""
+        """Get max total upload size in bytes."""
         return self.max_upload_size_mb * 1024 * 1024
+
+    @property
+    def max_file_size_bytes(self) -> int:
+        """Get max individual file size in bytes."""
+        return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def all_allowed_extensions(self) -> list[str]:
+        """Get all allowed file extensions."""
+        return self.allowed_image_extensions + self.allowed_document_extensions
 
     class Config:
         env_file = ".env"
