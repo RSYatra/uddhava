@@ -10,18 +10,6 @@ from typing import Any
 from pydantic import BaseModel, EmailStr, Field
 
 
-class SignupResponseData(BaseModel):
-    """Schema for signup response data."""
-
-    user_id: int = Field(..., description="Created user ID", examples=[123])
-    email: EmailStr = Field(
-        ...,
-        description="Registered email address",
-        examples=["radha.krishna@example.com"],
-    )
-    email_verified: bool = Field(..., description="Email verification status", examples=[False])
-
-
 class EmailVerificationRequest(BaseModel):
     """Schema for email verification request."""
 

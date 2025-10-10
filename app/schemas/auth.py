@@ -4,18 +4,65 @@ Authentication schemas.
 This module contains Pydantic models for authentication-related requests and responses.
 """
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, EmailStr, Field
 
 
-class Token(BaseModel):
-    """Schema for JWT token response."""
+class LoginRequest(BaseModel):
+    """Schema for login request."""
 
-    access_token: str = Field(..., description="JWT access token")
-    token_type: str = Field(default="bearer", description="Token type")
-    expires_in: int = Field(..., description="Token expiration time in seconds")
+    email: EmailStr = Field(
+        ...,
+        description="User email address",
+        examples=["radha.krishna@example.com"],
+    )
+    password: str = Field(
+        ...,
+        min_length=8,
+        description="User password",
+        examples=["SecurePass123!"],
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "radha.krishna@example.com",
+                "password": "SecurePass123!",
+            }
+        }
 
 
-class TokenData(BaseModel):
-    """Schema for token payload data."""
+class LoginResponse(BaseModel):
+    """Standardized schema for all login responses (success and error)."""
 
-    email: str | None = Field(None, description="User email from token")
+    success: bool = Field(
+        ...,
+        description="Indicates if the login was successful",
+        examples=[True],
+    )
+    status_code: int = Field(..., description="HTTP status code", examples=[200])
+    message: str = Field(
+        ...,
+        description="Human-readable message explaining the result",
+        examples=["Login successful"],
+    )
+    data: dict[str, Any] | None = Field(
+        None, description="Optional response data (omitted for errors)"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "status_code": 200,
+                "message": "Login successful",
+                "data": {
+                    "user_id": 123,
+                    "email": "radha.krishna@example.com",
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "token_type": "bearer",
+                    "expires_in": 3600,
+                },
+            }
+        }

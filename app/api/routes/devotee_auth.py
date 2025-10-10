@@ -32,7 +32,7 @@ from app.core.config import settings
 from app.core.security import create_access_token
 from app.db.models import Devotee
 from app.db.session import SessionLocal
-from app.schemas.auth import Token
+from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.devotee import (
     DevoteeSimpleCreate,
 )
@@ -715,11 +715,141 @@ async def complete_devotee_profile(
         ) from None
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Login to Devotee Account",
+    description="""
+Login with email and password to receive authentication token.
+
+**Security Features:**
+- Rate limiting: 5 attempts per 15 minutes per IP/email combination
+- Email verification required before login
+- Bcrypt password verification
+- Secure error messages (no information leakage)
+- Failed attempt tracking
+- Automatic IP blocking for suspicious activity
+
+**Requirements:**
+- Email must be verified
+- Valid credentials required
+- Account must not be locked
+
+**Authentication Flow:**
+1. Submit email and password
+2. System validates credentials
+3. Checks email verification status
+4. Generates JWT token (expires in 1 hour)
+5. Returns token with user info
+    """,
+    responses={
+        200: {
+            "description": "Success - Login successful, JWT token provided",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Login successful",
+                        "data": {
+                            "user_id": 123,
+                            "email": "radha.krishna@example.com",
+                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                            "token_type": "bearer",
+                            "expires_in": 3600,
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Email not verified",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "email_not_verified": {
+                            "summary": "Email verification required",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Email must be verified before login. Please check your inbox for verification link.",
+                                "data": {"email": "user@example.com"},
+                            },
+                        },
+                        "invalid_email": {
+                            "summary": "Invalid email format",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Invalid email format",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        401: {
+            "description": "Unauthorized - Invalid credentials",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "invalid_credentials": {
+                            "summary": "Wrong email or password",
+                            "value": {
+                                "success": False,
+                                "status_code": 401,
+                                "message": "Invalid credentials",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        429: {
+            "description": "Rate Limited - Too many login attempts",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "rate_limit_exceeded": {
+                            "summary": "More than 5 login attempts in 15 minutes",
+                            "value": {
+                                "success": False,
+                                "status_code": 429,
+                                "message": "Too many login attempts. Please try again later.",
+                                "data": {"retry_after_seconds": 900},
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "database_error": {
+                            "summary": "Database connection failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Database error occurred during login",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+    tags=["Devotee Authentication"],
+)
 async def devotee_login(
     request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
+    login_data: LoginRequest,
     db: Session = Depends(get_db),
 ):
     """
@@ -727,32 +857,32 @@ async def devotee_login(
 
     Returns JWT access token for authenticated devotee.
     Devotee must have verified email to login.
-
-    Security Features:
-    - Rate limiting to prevent brute force attacks
-    - Email validation and normalization
-    - Secure error messages (no information leakage)
-    - Failed attempt tracking
-    - IP blocking for suspicious activity
     """
     try:
         # Validate and sanitize email
-        email = input_validator.validate_email(email)
+        email = input_validator.validate_email(login_data.email)
 
         # Apply rate limiting before authentication attempt
         auth_security.check_login_rate_limit(request, email)
 
         service = DevoteeService(db)
 
-        devotee = service.authenticate_devotee(email, password)
+        # Authenticate devotee (returns None if invalid credentials)
+        devotee = service.authenticate_devotee(email, login_data.password)
         if not devotee:
             # Use generic error message to prevent email enumeration
             logger.warning(f"Failed login attempt for email: {email}")
-            raise error_handler.safe_error_response("auth_failed")
+            return LoginResponse(
+                success=False,
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                message="Invalid credentials",
+                data=None,
+            )
 
         # Clear rate limiting on successful login
         auth_security.record_successful_login(request, email)
 
+        # Generate JWT token
         access_token = create_access_token(
             data={
                 "sub": str(devotee.id),
@@ -761,27 +891,62 @@ async def devotee_login(
             }
         )
 
-        logger.info(f"Devotee login successful for email: {email}")
-        return Token(
-            access_token=access_token,
-            token_type="bearer",
-            expires_in=settings.jwt_access_token_expire_minutes * 60,
-        )  # nosec B106
+        expires_in_seconds = settings.jwt_access_token_expire_minutes * 60
 
-    except HTTPException:
-        raise
+        logger.info(f"Devotee login successful for email: {email}")
+        return LoginResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Login successful",
+            data={
+                "user_id": devotee.id,
+                "email": devotee.email,
+                "access_token": access_token,
+                "token_type": "bearer",
+                "expires_in": expires_in_seconds,
+            },
+        )
+
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Login failed: {e.detail}")
+
+        # Intelligently add data based on error type
+        response_data = None
+        if e.status_code == status.HTTP_400_BAD_REQUEST:
+            # Email not verified - include email for reference
+            response_data = {"email": email}
+        elif e.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            # Rate limited - include retry information
+            response_data = {"retry_after_seconds": 900}
+
+        # Handle specific error messages
+        message = e.detail if isinstance(e.detail, str) else str(e.detail)
+        if "Email must be verified" in message:
+            message = "Email must be verified before login. Please check your inbox for verification link."
+
+        return LoginResponse(
+            success=False,
+            status_code=e.status_code,
+            message=message,
+            data=response_data,
+        )
     except SQLAlchemyError as e:
         logger.error(f"Database error during devotee login: {e!s}")
-        raise HTTPException(
+        return LoginResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred during login",
-        ) from None
+            message="Database error occurred during login",
+            data=None,
+        )
     except Exception as e:
         logger.error(f"Unexpected error during devotee login: {e!s}")
-        raise HTTPException(
+        return LoginResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during login",
-        ) from None
+            message="An unexpected error occurred during login",
+            data=None,
+        )
 
 
 @router.post("/verify-email", response_model=EmailVerificationResponse)
