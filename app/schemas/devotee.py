@@ -372,38 +372,3 @@ class DevoteeStatsResponse(BaseModel):
     average_age: float | None
     average_chanting_rounds: float | None
     recently_joined: int  # In last 30 days
-
-
-# Token schemas (reused from user schemas)
-class Token(BaseModel):
-    """Schema for JWT token response."""
-
-    access_token: str = Field(..., description="JWT access token")
-    token_type: str = Field(default="bearer", description="Token type")
-    expires_in: int = Field(..., description="Token expiration time in seconds")
-
-
-class TokenData(BaseModel):
-    """Schema for token payload data."""
-
-    email: str | None = Field(None, description="Devotee email from token")
-
-
-# Enhanced error response schemas
-class ValidationErrorDetail(BaseModel):
-    """Schema for validation error details."""
-
-    field: str
-    message: str
-    invalid_value: Any | None = None
-
-
-class DetailedErrorResponse(BaseModel):
-    """Schema for detailed error responses."""
-
-    detail: str = Field(..., description="Error message")
-    error_code: str | None = Field(None, description="Error code for programmatic handling")
-    validation_errors: list[ValidationErrorDetail] | None = Field(
-        None, description="Field-specific validation errors"
-    )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
