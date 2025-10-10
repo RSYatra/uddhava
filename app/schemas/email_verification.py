@@ -13,29 +13,50 @@ from pydantic import BaseModel, EmailStr, Field
 class EmailVerificationRequest(BaseModel):
     """Schema for email verification request."""
 
-    token: str
+    token: str = Field(
+        ...,
+        min_length=32,
+        max_length=256,
+        description="Email verification token from the verification link",
+        examples=["abc123xyz789def456ghi789jkl012mno345pqr678"],
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "token": "abc123xyz789",
+                "token": "abc123xyz789def456ghi789jkl012mno345pqr678",
             }
         }
 
 
 class EmailVerificationResponse(BaseModel):
-    """Schema for email verification response."""
+    """Standardized schema for email verification responses (success and error)."""
 
-    message: str
-    email: EmailStr
-    verified: bool
+    success: bool = Field(
+        ...,
+        description="Indicates if the verification was successful",
+        examples=[True],
+    )
+    status_code: int = Field(..., description="HTTP status code", examples=[200])
+    message: str = Field(
+        ...,
+        description="Human-readable message explaining the result",
+        examples=["Email verified successfully. You can now login to your account."],
+    )
+    data: dict[str, Any] | None = Field(
+        None, description="Optional response data (omitted for errors)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "Email verified successfully!",
-                "email": "user@example.com",
-                "verified": True,
+                "success": True,
+                "status_code": 200,
+                "message": "Email verified successfully. You can now login to your account.",
+                "data": {
+                    "email": "radha.krishna@example.com",
+                    "email_verified": True,
+                },
             }
         }
 
@@ -43,27 +64,47 @@ class EmailVerificationResponse(BaseModel):
 class ResendVerificationRequest(BaseModel):
     """Schema for resending verification email request."""
 
-    email: EmailStr
+    email: EmailStr = Field(
+        ...,
+        description="Email address to resend verification to",
+        examples=["radha.krishna@example.com"],
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "email": "user@example.com",
+                "email": "radha.krishna@example.com",
             }
         }
 
 
 class ResendVerificationResponse(BaseModel):
-    """Schema for resending verification email response."""
+    """Standardized schema for resend verification responses (success and error)."""
 
-    message: str
-    email: EmailStr
+    success: bool = Field(
+        ...,
+        description="Indicates if the request was successful",
+        examples=[True],
+    )
+    status_code: int = Field(..., description="HTTP status code", examples=[200])
+    message: str = Field(
+        ...,
+        description="Human-readable message explaining the result",
+        examples=["Verification email sent. Please check your inbox and spam folder."],
+    )
+    data: dict[str, Any] | None = Field(
+        None, description="Optional response data (omitted for errors)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "Verification email has been resent successfully!",
-                "email": "user@example.com",
+                "success": True,
+                "status_code": 200,
+                "message": "Verification email sent. Please check your inbox and spam folder.",
+                "data": {
+                    "email": "radha.krishna@example.com",
+                },
             }
         }
 

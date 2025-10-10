@@ -28,8 +28,10 @@ def retry_db_operation(max_retries: int = 3, delay: float = 1.0):
         max_retries: Maximum number of retry attempts
         delay: Delay between retries in seconds
     """
+    import functools
 
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             for attempt in range(max_retries):
                 try:
@@ -106,8 +108,7 @@ def checkin_handler(dbapi_connection, connection_record):
     logger.debug("Connection returned to pool")
 
 
-# Database dependency with automatic retry
-@retry_db_operation(max_retries=3, delay=1.0)
+# Database dependency
 def get_db() -> Generator[Session]:
     """
     Database dependency that provides a database session.
@@ -115,8 +116,9 @@ def get_db() -> Generator[Session]:
     Yields:
         SQLAlchemy database session with automatic cleanup
 
-    Raises:
-        DatabaseError: When database connection fails after retries
+    Note:
+        Connection pooling and retry logic is handled by the SQLAlchemy engine
+        configuration (pool_pre_ping, pool_recycle, etc).
     """
     db = SessionLocal()
     try:
