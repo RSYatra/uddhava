@@ -21,16 +21,14 @@ from jose import JWTError, jwt
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.auth_decorators import admin_only_endpoint, get_current_user
 from app.core.auth_security import (
     auth_security,
-    error_handler,
     input_validator,
     token_manager,
 )
 from app.core.config import settings
-from app.core.security import create_access_token
-from app.db.models import Devotee
+from app.core.security import create_access_token, get_current_user
+from app.db.models import Devotee, UserRole
 from app.db.session import SessionLocal
 from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.devotee import (
@@ -44,6 +42,8 @@ from app.schemas.email_verification import (
     SignupResponse,
 )
 from app.schemas.password_reset import (
+    AdminResetPasswordRequest,
+    AdminResetPasswordResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     ResetPasswordRequest,
@@ -949,97 +949,631 @@ async def devotee_login(
         )
 
 
-@router.post("/verify-email", response_model=EmailVerificationResponse)
-async def verify_devotee_email(request: EmailVerificationRequest, db: Session = Depends(get_db)):
+@router.post(
+    "/verify-email",
+    response_model=EmailVerificationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify Email Address",
+    description="""
+Verify devotee's email address using the verification token sent via email.
+
+**Process Flow:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   EMAIL VERIFICATION PROCESS                    │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │ Click Email  │
+    │     Link     │
+    └──────┬───────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Schema Validation│ (Pydantic)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Token Format     │ (Length + Pattern)
+    │   Validation     │
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Find User by     │
+    │     Token        │
+    └──────┬───────────┘
+           │
+           ├─ Not Found? → 404 Error
+           │
+           ├─ Already Verified? → 400 Error
+           │
+           ├─ Token Expired? → 400 Error
+           │
+           ↓ Valid Token
+    ┌──────────────────┐
+    │ Mark as Verified │ (DB Update)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Clear Token    │
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Send Success     │ (Confirmation Email)
+    │     Email        │
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  200 Response    │ (Can Now Login)
+    └──────────────────┘
+```
+
+**Security Features:**
+- Token format validation (32-256 characters)
+- Token expiration checks (24 hours validity)
+- One-time use tokens (cleared after verification)
+- Secure error messages
+- Database transaction safety
+
+**Token Requirements:**
+- Length: 32-256 characters
+- Format: Alphanumeric with special characters
+- Validity: 24 hours from signup
+- Single use only
+
+**After Verification:**
+- User can login with their credentials
+- Verification token is invalidated
+- Confirmation email is sent
+- User can complete their full profile
+    """,
+    responses={
+        200: {
+            "description": "Success - Email verified successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Email verified successfully. You can now login to your account.",
+                        "data": {
+                            "email": "radha.krishna@example.com",
+                            "email_verified": True,
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Invalid token or already verified",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "already_verified": {
+                            "summary": "Email already verified",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Email is already verified",
+                                "data": None,
+                            },
+                        },
+                        "token_expired": {
+                            "summary": "Verification token expired (24 hours)",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Verification token has expired",
+                                "data": None,
+                            },
+                        },
+                        "invalid_token_format": {
+                            "summary": "Token format is invalid",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Invalid verification token format",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "Not Found - Token not found in database",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 404,
+                        "message": "Invalid or expired verification token",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation Error - Invalid request format",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "missing_token": {
+                            "summary": "Token field is missing",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Field 'token' is required",
+                                "data": None,
+                            },
+                        },
+                        "token_too_short": {
+                            "summary": "Token is too short",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Token must be at least 32 characters",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "database_error": {
+                            "summary": "Database connection failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Database error occurred during email verification",
+                                "data": None,
+                            },
+                        },
+                        "unexpected_error": {
+                            "summary": "Unexpected system error",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "An unexpected error occurred during email verification",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+    tags=["Devotee Authentication"],
+)
+async def verify_devotee_email(
+    request_obj: Request,
+    request: EmailVerificationRequest,
+    db: Session = Depends(get_db),
+):
     """
     Verify devotee's email address using verification token.
 
-    This endpoint is called when devotee clicks the verification link in their email.
-    Upon successful verification, the devotee can login to their account.
-
-    Security Features:
-    - Token format validation
-    - Secure error handling
-    - Token expiration checks
-    - Prevention of token reuse
+    See the detailed description and response examples above for all scenarios.
     """
     try:
-        logger.info(f"Starting email verification for token: {request.token[:8]}...")
+        logger.info("Starting email verification process")
 
         # Validate token format to prevent injection attacks
         if not token_manager.validate_token_format(request.token):
             logger.warning("Token format validation failed")
-            raise error_handler.safe_error_response("token_invalid")
+            return EmailVerificationResponse(
+                success=False,
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Invalid verification token format",
+                data=None,
+            )
 
         service = DevoteeService(db)
         verified_email = await service.verify_devotee_email(request.token)
 
-        logger.info(f"Devotee email verification successful for token: {request.token[:8]}...")
+        logger.info(f"Email verification successful for: {verified_email}")
         return EmailVerificationResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
             message="Email verified successfully. You can now login to your account.",
-            email=verified_email,
-            verified=True,
+            data={
+                "email": verified_email,
+                "email_verified": True,
+            },
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Email verification failed: {e.detail}")
+        return EmailVerificationResponse(
+            success=False,
+            status_code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            data=None,
+        )
     except SQLAlchemyError as e:
-        logger.error(f"Database error during devotee email verification: {e!s}")
-        raise HTTPException(
+        logger.error(f"Database error during email verification: {e!s}")
+        return EmailVerificationResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred during email verification",
-        ) from None
+            message="Database error occurred during email verification",
+            data=None,
+        )
     except Exception as e:
-        logger.error(f"Unexpected error during devotee email verification: {e!s}")
-        raise HTTPException(
+        logger.error(f"Unexpected error during email verification: {e!s}")
+        return EmailVerificationResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during email verification",
-        ) from None
+            message="An unexpected error occurred during email verification",
+            data=None,
+        )
 
 
-@router.post("/resend-verification", response_model=ResendVerificationResponse)
+@router.post(
+    "/resend-verification",
+    response_model=ResendVerificationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Resend Verification Email",
+    description="""
+Resend email verification link to a devotee.
+
+**Use Cases:**
+- Verification email not received
+- Verification token expired (24 hours)
+- Email went to spam folder
+- User lost the original email
+
+**Process:**
+1. Validates email format
+2. Checks if user exists
+3. Checks if already verified
+4. Generates new verification token
+5. Sends new verification email
+
+**Security:**
+- Rate limited to prevent abuse
+- New token invalidates old token
+- 24-hour expiration
+- Generic error messages (no email enumeration)
+    """,
+    responses={
+        200: {
+            "description": "Success - Verification email resent",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Verification email sent. Please check your inbox and spam folder.",
+                        "data": {
+                            "email": "radha.krishna@example.com",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Email already verified or invalid",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "already_verified": {
+                            "summary": "Email already verified",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Email is already verified. You can login now.",
+                                "data": None,
+                            },
+                        },
+                        "resend_failed": {
+                            "summary": "Failed to resend email",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Failed to resend verification email",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation Error - Invalid email format",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 422,
+                        "message": "Invalid email format",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "database_error": {
+                            "summary": "Database connection failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Database error occurred while resending verification email",
+                                "data": None,
+                            },
+                        },
+                        "email_service_error": {
+                            "summary": "Email service unavailable",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Failed to send verification email. Please try again later.",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+    tags=["Devotee Authentication"],
+)
 async def resend_devotee_verification(
-    request: ResendVerificationRequest, db: Session = Depends(get_db)
+    request_obj: Request,
+    request: ResendVerificationRequest,
+    db: Session = Depends(get_db),
 ):
     """
     Resend email verification to devotee.
 
-    This endpoint can be used if the devotee didn't receive the initial
-    verification email or if the verification token has expired.
+    See the detailed description and response examples above for all scenarios.
     """
     try:
-        service = DevoteeService(db)
+        # Validate and sanitize email
+        email = input_validator.validate_email(request.email)
 
-        success = await service.resend_verification_email(request.email)
+        service = DevoteeService(db)
+        success = await service.resend_verification_email(email)
+
         if not success:
-            raise HTTPException(
+            return ResendVerificationResponse(
+                success=False,
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to resend verification email",
+                message="Failed to resend verification email",
+                data=None,
             )
 
-        logger.info(f"Devotee verification email resent to: {request.email}")
+        logger.info(f"Verification email resent to: {email}")
         return ResendVerificationResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
             message="Verification email sent. Please check your inbox and spam folder.",
-            email_sent=True,
+            data={"email": email},
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Resend verification failed: {e.detail}")
+        return ResendVerificationResponse(
+            success=False,
+            status_code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            data=None,
+        )
     except SQLAlchemyError as e:
-        logger.error(f"Database error during devotee resend verification: {e!s}")
-        raise HTTPException(
+        logger.error(f"Database error during resend verification: {e!s}")
+        return ResendVerificationResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred while resending verification email",
-        ) from None
+            message="Database error occurred while resending verification email",
+            data=None,
+        )
     except Exception as e:
-        logger.error(f"Unexpected error during devotee resend verification: {e!s}")
-        raise HTTPException(
+        logger.error(f"Unexpected error during resend verification: {e!s}")
+        return ResendVerificationResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while resending verification email",
-        ) from None
+            message="An unexpected error occurred while resending verification email",
+            data=None,
+        )
 
 
-@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+@router.post(
+    "/forgot-password",
+    response_model=ForgotPasswordResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request Password Reset",
+    description="""
+Request a password reset link via email.
+
+**Process Flow:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   FORGOT PASSWORD PROCESS                       │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │   Request    │
+    │    Reset     │
+    └──────┬───────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Schema Validation│ (Pydantic)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Email Validation │ (Format + Normalize)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  Rate Limiting   │ (3 per 15 min)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Find User      │
+    └──────┬───────────┘
+           │
+           ├─ Not Found? → Return Generic Success (Security)
+           │
+           ├─ Not Verified? → 400 Error
+           │
+           ↓ Verified User
+    ┌──────────────────┐
+    │  Generate Token  │ (Secure Random)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Save Token     │ (1 hour expiry)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Send Email     │ (Reset Link)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  200 Response    │ (Generic Message)
+    └──────────────────┘
+```
+
+**Security Features:**
+- Rate limiting: 3 attempts per 15 minutes per IP/email
+- Generic response (no email enumeration)
+- Email verification required
+- Secure token generation (32 bytes URL-safe)
+- Token expiration (1 hour)
+- One-time use tokens
+
+**Requirements:**
+- Valid email format
+- Email must be verified
+- User must exist in system
+
+**Important Notes:**
+- Response is always generic for security (doesn't reveal if email exists)
+- Only verified users receive reset emails
+- Reset link expires in 1 hour
+- Token is cleared after successful use
+    """,
+    responses={
+        200: {
+            "description": "Success - Generic response for security",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "If this email is registered and verified, you will receive password reset instructions.",
+                        "data": {
+                            "email": "radha.krishna@example.com",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Email not verified",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 400,
+                        "message": "Email must be verified before password reset",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation Error - Invalid email format",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "invalid_email": {
+                            "summary": "Email format validation failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Invalid email format",
+                                "data": None,
+                            },
+                        },
+                        "missing_email": {
+                            "summary": "Email field is missing",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Field 'email' is required",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        429: {
+            "description": "Rate Limited - Too many requests",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 429,
+                        "message": "Too many password reset requests. Please try again later.",
+                        "data": {"retry_after_seconds": 900},
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "database_error": {
+                            "summary": "Database connection failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Database error occurred while sending password reset email",
+                                "data": None,
+                            },
+                        },
+                        "email_service_error": {
+                            "summary": "Email service unavailable",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Failed to send password reset email. Please try again later.",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+    tags=["Devotee Authentication"],
+)
 async def devotee_forgot_password(
     request_obj: Request,
     request: ForgotPasswordRequest,
@@ -1048,14 +1582,7 @@ async def devotee_forgot_password(
     """
     Send password reset email to devotee.
 
-    If the email exists and is verified, sends a password reset email.
-    For security, always returns success even if email doesn't exist.
-
-    Security Features:
-    - Rate limiting to prevent email enumeration attacks
-    - Email validation and normalization
-    - Generic responses to prevent information disclosure
-    - Request tracking and suspicious activity detection
+    See the detailed description and response examples above for all scenarios.
     """
     try:
         # Validate and sanitize email
@@ -1065,129 +1592,609 @@ async def devotee_forgot_password(
         auth_security.check_password_reset_rate_limit(request_obj, email)
 
         service = DevoteeService(db)
-
         await service.send_password_reset_email(email)
 
-        logger.info(f"Password reset email sent to: {email}")
+        logger.info("Password reset email process completed")
         return ForgotPasswordResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
             message=(
                 "If this email is registered and verified, "
                 "you will receive password reset instructions."
             ),
-            email_sent=True,
+            data={"email": email},
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Forgot password failed: {e.detail}")
+
+        # Intelligently add data based on error type
+        response_data = None
+        if e.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            response_data = {"retry_after_seconds": 900}
+
+        return ForgotPasswordResponse(
+            success=False,
+            status_code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            data=response_data,
+        )
     except SQLAlchemyError as e:
-        logger.error(f"Database error during devotee forgot password: {e!s}")
-        raise HTTPException(
+        logger.error(f"Database error during forgot password: {e!s}")
+        return ForgotPasswordResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred while sending password reset email",
-        ) from None
+            message="Database error occurred while sending password reset email",
+            data=None,
+        )
     except Exception as e:
-        logger.error(f"Unexpected error during devotee forgot password: {e!s}")
-        raise HTTPException(
+        logger.error(f"Unexpected error during forgot password: {e!s}")
+        return ForgotPasswordResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while sending password reset email",
-        ) from None
+            message="An unexpected error occurred while sending password reset email",
+            data=None,
+        )
 
 
-@router.post("/reset-password", response_model=ResetPasswordResponse)
-async def devotee_reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+@router.post(
+    "/reset-password",
+    response_model=ResetPasswordResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset Password with Token",
+    description="""
+Reset devotee's password using the reset token from email.
+
+**Process Flow:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   RESET PASSWORD PROCESS                        │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │ Click Email  │
+    │     Link     │
+    └──────┬───────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Schema Validation│ (Pydantic)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Token Format     │ (32-256 chars)
+    │   Validation     │
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  Password Check  │ (Strength + Complexity)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Find User by     │
+    │     Token        │
+    └──────┬───────────┘
+           │
+           ├─ Not Found? → 404 Error
+           │
+           ├─ Token Expired? → 400 Error
+           │
+           ↓ Valid Token
+    ┌──────────────────┐
+    │  Hash Password   │ (Bcrypt)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Update Password  │ (DB Update)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Clear Token    │
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  200 Response    │ (Can Now Login)
+    └──────────────────┘
+```
+
+**Security Features:**
+- Token format validation (32-256 characters)
+- Password strength validation (uppercase, lowercase, digit, special char)
+- Token expiration checks (1 hour validity)
+- One-time use tokens (cleared after reset)
+- Secure error messages
+- Bcrypt password hashing
+
+**Password Requirements:**
+- Length: 8-128 characters
+- Must contain:
+  - Uppercase letter (A-Z)
+  - Lowercase letter (a-z)
+  - Digit (0-9)
+  - Special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+
+**After Reset:**
+- User can login with new password
+- Reset token is invalidated
+- Old password no longer works
+- User receives confirmation email
+    """,
+    responses={
+        200: {
+            "description": "Success - Password reset successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Password reset successful. You can now login with your new password.",
+                        "data": {
+                            "email": "radha.krishna@example.com",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Token expired or weak password",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "token_expired": {
+                            "summary": "Reset token expired (1 hour)",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Reset token has expired",
+                                "data": None,
+                            },
+                        },
+                        "weak_password": {
+                            "summary": "Password doesn't meet requirements",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Password must contain uppercase, lowercase, digit, and special character",
+                                "data": None,
+                            },
+                        },
+                        "invalid_token_format": {
+                            "summary": "Token format is invalid",
+                            "value": {
+                                "success": False,
+                                "status_code": 400,
+                                "message": "Invalid reset token format",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "Not Found - Token not found in database",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 404,
+                        "message": "Invalid reset token",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation Error - Invalid request format",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "missing_token": {
+                            "summary": "Token field is missing",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Field 'token' is required",
+                                "data": None,
+                            },
+                        },
+                        "token_too_short": {
+                            "summary": "Token is too short",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Token must be at least 32 characters",
+                                "data": None,
+                            },
+                        },
+                        "password_too_short": {
+                            "summary": "Password is too short",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Password must be at least 8 characters",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "database_error": {
+                            "summary": "Database connection failed",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "Database error occurred during password reset",
+                                "data": None,
+                            },
+                        },
+                        "unexpected_error": {
+                            "summary": "Unexpected system error",
+                            "value": {
+                                "success": False,
+                                "status_code": 500,
+                                "message": "An unexpected error occurred during password reset",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+    tags=["Devotee Authentication"],
+)
+async def devotee_reset_password(
+    request_obj: Request,
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
     """
     Reset devotee's password using reset token.
 
-    This endpoint is called when devotee submits the password reset form
-    after clicking the reset link in their email.
-
-    Security Features:
-    - Token format validation
-    - Password strength validation
-    - Token expiration checks
-    - Secure error handling
-    - One-time token usage
+    See the detailed description and response examples above for all scenarios.
     """
     try:
         # Validate token format
         if not token_manager.validate_token_format(request.token):
-            raise error_handler.safe_error_response("token_invalid")
+            return ResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Invalid reset token format",
+                data=None,
+            )
 
         # Validate new password strength
         new_password = input_validator.validate_password(request.new_password)
 
         service = DevoteeService(db)
-
         success = service.reset_password_with_token(request.token, new_password)
-        if not success:
-            raise error_handler.safe_error_response("token_invalid")
 
-        logger.info(f"Password reset successful for token: {request.token[:8]}...")
+        if not success:
+            return ResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Invalid reset token",
+                data=None,
+            )
+
+        # Get devotee email for response (token is now cleared)
+        logger.info("Password reset successful")
         return ResetPasswordResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
             message="Password reset successful. You can now login with your new password.",
-            reset_successful=True,
+            data=None,  # Don't expose email for security
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Password reset failed: {e.detail}")
+        return ResetPasswordResponse(
+            success=False,
+            status_code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            data=None,
+        )
     except SQLAlchemyError as e:
-        logger.error(f"Database error during devotee password reset: {e!s}")
-        raise HTTPException(
+        logger.error(f"Database error during password reset: {e!s}")
+        return ResetPasswordResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred during password reset",
-        ) from None
+            message="Database error occurred during password reset",
+            data=None,
+        )
     except Exception as e:
-        logger.error(f"Unexpected error during devotee password reset: {e!s}")
-        raise HTTPException(
+        logger.error(f"Unexpected error during password reset: {e!s}")
+        return ResetPasswordResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during password reset",
-        ) from None
+            message="An unexpected error occurred during password reset",
+            data=None,
+        )
 
 
-@router.post("/admin/reset-password")
-@admin_only_endpoint
+@router.post(
+    "/admin/reset-password",
+    response_model=AdminResetPasswordResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Admin Reset Devotee Password",
+    description="""
+Reset any devotee's password (admin only).
+
+**Use Cases:**
+- Devotee forgot password and has no email access
+- Devotee locked out of account
+- Emergency password reset required
+- Support ticket resolution
+
+**Process:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│               ADMIN PASSWORD RESET PROCESS                      │
+└─────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │ Admin Request│
+    └──────┬───────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Auth Check       │ (Admin role required)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Schema Validation│ (Pydantic)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  Password Check  │ (Strength + Complexity)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Find Devotee   │ (By ID)
+    └──────┬───────────┘
+           │
+           ├─ Not Found? → 404 Error
+           │
+           ↓ Found
+    ┌──────────────────┐
+    │  Hash Password   │ (Bcrypt)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │ Update Password  │ (DB Update)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │   Audit Log      │ (Track admin action)
+    └──────┬───────────┘
+           │
+           ↓
+    ┌──────────────────┐
+    │  200 Response    │ (Success)
+    └──────────────────┘
+```
+
+**Security Features:**
+- Requires admin authentication (admin role)
+- Password strength validation
+- Audit logging (tracks which admin reset which devotee)
+- Bcrypt password hashing
+- No token/email required (direct DB update)
+
+**Password Requirements:**
+- Length: 8-128 characters
+- Must contain: uppercase, lowercase, digit, special character
+
+**Important Notes:**
+- Only admins can use this endpoint
+- Action is logged for audit trail
+- Devotee is NOT notified (admin responsible for communication)
+- No verification email sent
+- Password is effective immediately
+    """,
+    responses={
+        200: {
+            "description": "Success - Password reset by admin",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "status_code": 200,
+                        "message": "Password reset successful by admin",
+                        "data": {
+                            "devotee_id": 123,
+                            "admin_id": 1,
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Bad Request - Weak password",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 400,
+                        "message": "Password must contain uppercase, lowercase, digit, and special character",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        401: {
+            "description": "Unauthorized - Not authenticated",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 401,
+                        "message": "Not authenticated",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        403: {
+            "description": "Forbidden - Not an admin",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 403,
+                        "message": "Admin access required",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "Not Found - Devotee not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 404,
+                        "message": "Devotee not found",
+                        "data": None,
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation Error - Invalid input",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "invalid_devotee_id": {
+                            "summary": "Devotee ID must be positive",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Devotee ID must be greater than 0",
+                                "data": None,
+                            },
+                        },
+                        "password_too_short": {
+                            "summary": "Password too short",
+                            "value": {
+                                "success": False,
+                                "status_code": 422,
+                                "message": "Password must be at least 8 characters",
+                                "data": None,
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Server Error - System failure",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "status_code": 500,
+                        "message": "Database error occurred during admin password reset",
+                        "data": None,
+                    }
+                }
+            },
+        },
+    },
+    tags=["Admin Operations"],
+)
 async def admin_reset_devotee_password(
-    devotee_id: int,
-    new_password: str,
+    request_obj: Request,
+    request: AdminResetPasswordRequest,
     db: Session = Depends(get_db),
     current_user: Devotee = Depends(get_current_user),
-) -> dict[str, str]:
+):
     """
     Admin endpoint to reset any devotee's password.
 
-    This is for administrative purposes when devotees need password assistance.
-    Requires admin authentication.
+    See the detailed description and response examples above for all scenarios.
     """
     try:
-        service = DevoteeService(db)
+        # Check admin role
+        if current_user.role != UserRole.ADMIN:
+            return AdminResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_403_FORBIDDEN,
+                message="Admin access required",
+                data=None,
+            )
 
-        success = service.admin_reset_password(devotee_id, new_password, current_user.id)
+        # Validate password strength (Pydantic validator already called)
+        new_password = input_validator.validate_password(request.new_password)
+
+        service = DevoteeService(db)
+        success = service.admin_reset_password(request.devotee_id, new_password, current_user.id)
+
         if not success:
-            raise HTTPException(
+            return AdminResetPasswordResponse(
+                success=False,
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Admin password reset failed",
+                message="Admin password reset failed",
+                data=None,
             )
 
         logger.info(
             f"Admin {current_user.id} ({current_user.email}) "
-            f"reset password for devotee {devotee_id}"
+            f"reset password for devotee {request.devotee_id}"
         )
-        return {
-            "message": "Password reset successful",
-            "devotee_id": str(devotee_id),
-        }
+        return AdminResetPasswordResponse(
+            success=True,
+            status_code=status.HTTP_200_OK,
+            message="Password reset successful by admin",
+            data={
+                "devotee_id": request.devotee_id,
+                "admin_id": current_user.id,
+            },
+        )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to standardized response
+        logger.warning(f"Admin password reset failed: {e.detail}")
+        return AdminResetPasswordResponse(
+            success=False,
+            status_code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            data=None,
+        )
     except SQLAlchemyError as e:
         logger.error(f"Database error during admin password reset: {e!s}")
-        raise HTTPException(
+        return AdminResetPasswordResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred during admin password reset",
-        ) from None
+            message="Database error occurred during admin password reset",
+            data=None,
+        )
     except Exception as e:
         logger.error(f"Unexpected error during admin password reset: {e!s}")
-        raise HTTPException(
+        return AdminResetPasswordResponse(
+            success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during admin password reset",
-        ) from None
+            message="An unexpected error occurred during admin password reset",
+            data=None,
+        )
