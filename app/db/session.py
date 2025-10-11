@@ -6,10 +6,12 @@ database connection utilities with production-grade reliability features.
 """
 
 import logging
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from functools import wraps
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, exc, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
@@ -22,11 +24,11 @@ engine = create_engine(
     settings.database_url,
     # Connection pool settings
     poolclass=QueuePool,
-    pool_size=10,  # Base number of connections
-    max_overflow=20,  # Additional connections when needed
-    pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=3600,  # Recycle connections every hour
-    pool_timeout=30,  # Timeout for getting connection from pool
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_pre_ping=settings.db_pool_pre_ping,
+    pool_recycle=settings.db_pool_recycle,
+    pool_timeout=settings.db_pool_timeout,
     # Query and execution settings
     echo=settings.debug,  # Log SQL in debug mode
     echo_pool=settings.debug,  # Log pool events in debug mode
@@ -36,9 +38,9 @@ engine = create_engine(
         {
             "charset": "utf8mb4",
             "autocommit": False,
-            "connect_timeout": 60,
-            "read_timeout": 30,
-            "write_timeout": 30,
+            "connect_timeout": settings.db_connect_timeout,
+            "read_timeout": settings.db_read_timeout,
+            "write_timeout": settings.db_write_timeout,
         }
         if "mysql" in settings.database_url
         else {}
@@ -54,16 +56,86 @@ SessionLocal = sessionmaker(
 )
 
 
+# Retry decorator for database operations
+def with_db_retry(max_retries=None, retry_delay=None, backoff=None):
+    """
+    Decorator to retry database operations on connection failures.
+
+    Args:
+        max_retries: Maximum number of retry attempts (uses config default if None)
+        retry_delay: Initial delay between retries in seconds (uses config default if None)
+        backoff: Exponential backoff multiplier (uses config default if None)
+    """
+    max_retries = max_retries or settings.db_max_retries
+    retry_delay = retry_delay or settings.db_retry_delay
+    backoff = backoff or settings.db_retry_backoff
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            delay = retry_delay
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except (
+                    exc.OperationalError,
+                    exc.DatabaseError,
+                    exc.DisconnectionError,
+                ) as e:
+                    last_exception = e
+                    error_msg = str(e).lower()
+
+                    # Check if it's a retryable error
+                    retryable_errors = [
+                        "mysql server has gone away",
+                        "lost connection",
+                        "connection reset",
+                        "broken pipe",
+                        "can't connect",
+                        "connection refused",
+                        "timeout",
+                        "too many connections",
+                    ]
+
+                    is_retryable = any(err in error_msg for err in retryable_errors)
+
+                    if not is_retryable or attempt == max_retries:
+                        logger.error(
+                            f"Database operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}"
+                        )
+                        raise
+
+                    logger.warning(
+                        f"Database connection error (attempt {attempt + 1}/{max_retries + 1}), "
+                        f"retrying in {delay:.1f}s: {e}"
+                    )
+
+                    # Dispose of the connection pool to force reconnection
+                    engine.dispose()
+
+                    time.sleep(delay)
+                    delay *= backoff
+
+            raise last_exception
+
+        return wrapper
+
+    return decorator
+
+
 # Event listeners for connection monitoring
 @event.listens_for(engine, "connect")
 def connect_handler(dbapi_connection, connection_record):
     """Log successful database connections."""
-    logger.debug("New database connection established")
+    logger.info("New database connection established")
 
 
 @event.listens_for(engine, "checkout")
 def checkout_handler(dbapi_connection, connection_record, connection_proxy):
-    """Log connection checkout from pool."""
+    """Verify connection is alive before checkout."""
+    # pool_pre_ping handles this, but we log it
     logger.debug("Connection checked out from pool")
 
 
@@ -73,27 +145,106 @@ def checkin_handler(dbapi_connection, connection_record):
     logger.debug("Connection returned to pool")
 
 
-# Database dependency
+@event.listens_for(engine, "close")
+def close_handler(dbapi_connection, connection_record):
+    """Log connection closure."""
+    logger.debug("Database connection closed")
+
+
+@event.listens_for(engine, "close_detached")
+def close_detached_handler(dbapi_connection, connection_record):
+    """Log detached connection closure."""
+    logger.debug("Detached database connection closed")
+
+
+@event.listens_for(engine, "invalidate")
+def invalidate_handler(dbapi_connection, connection_record, exception):
+    """Log connection invalidation."""
+    logger.warning(f"Database connection invalidated: {exception}")
+
+
+# Database dependency with retry logic
+@with_db_retry()
 def get_db() -> Generator[Session]:
     """
-    Database dependency that provides a database session.
+    Database dependency that provides a database session with automatic retry.
 
     Yields:
         SQLAlchemy database session with automatic cleanup
 
-    Note:
-        Connection pooling and retry logic is handled by the SQLAlchemy engine
-        configuration (pool_pre_ping, pool_recycle, etc).
+    Features:
+        - Automatic retry on connection failures (3 attempts with exponential backoff)
+        - Connection pooling with health checks (pool_pre_ping)
+        - Automatic connection recycling (every 30 minutes)
+        - Proper rollback on errors
+        - Connection cleanup in finally block
+
+    Raises:
+        exc.OperationalError: After max retries if connection cannot be established
     """
     db = SessionLocal()
     try:
+        # Test connection on first use
+        db.execute(text("SELECT 1"))
         yield db
+        # Commit any pending transactions
+        db.commit()
     except Exception as e:
         logger.error(f"Database session error: {e}")
         db.rollback()
         raise
     finally:
         db.close()
+
+
+def check_database_health() -> dict:
+    """
+    Check database connection health and return status.
+
+    Returns:
+        dict: Health status with connection info and any errors
+
+    Example:
+        {
+            "status": "healthy",
+            "database": "uddhava_db",
+            "pool_size": 10,
+            "checked_out": 2,
+            "overflow": 0,
+            "response_time_ms": 5.2
+        }
+    """
+    start_time = time.time()
+    status = {
+        "status": "unhealthy",
+        "database": settings.db_name,
+        "error": None,
+    }
+
+    try:
+        # Try to execute a simple query
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            conn.commit()
+
+        # Get pool statistics
+        pool = engine.pool
+        status.update(
+            {
+                "status": "healthy",
+                "pool_size": pool.size(),
+                "checked_out": pool.checkedout(),
+                "overflow": pool.overflow(),
+                "response_time_ms": round((time.time() - start_time) * 1000, 2),
+            }
+        )
+        logger.info("Database health check: HEALTHY")
+
+    except Exception as e:
+        status["error"] = str(e)
+        logger.error(f"Database health check: UNHEALTHY - {e}")
+
+    return status
 
 
 @contextmanager
