@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal, check_database_health, engine
 from app.schemas.health import HealthResponse
 
 logger = logging.getLogger(__name__)
@@ -67,3 +67,33 @@ def health_check():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Health check failed",
         ) from None
+
+
+@router.get("/health/database", summary="Database Health Check")
+def database_health_check():
+    """
+    Detailed database health check endpoint.
+
+    Returns comprehensive database health information including:
+    - Connection status
+    - Connection pool statistics
+    - Response time
+    - Error details (if any)
+
+    This is useful for monitoring and debugging database connectivity issues.
+    """
+    db_health = check_database_health()
+
+    if db_health["status"] == "healthy":
+        return {
+            "success": True,
+            "status_code": 200,
+            "message": "Database is healthy",
+            "data": db_health,
+        }
+    else:
+        logger.error(f"Database health check failed: {db_health.get('error')}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database is unhealthy: {db_health.get('error')}",
+        )

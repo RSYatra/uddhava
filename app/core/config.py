@@ -34,6 +34,21 @@ class Settings(BaseSettings):
     db_password: str = "changeme"
     db_name: str = "uddhava_db"
 
+    # Database Connection Pool Settings
+    db_pool_size: int = 10  # Base number of connections in pool
+    db_max_overflow: int = 20  # Additional connections when pool is full
+    db_pool_timeout: int = 30  # Seconds to wait for connection from pool
+    db_pool_recycle: int = 1800  # Recycle connections after 30 minutes (prevent timeout)
+    db_pool_pre_ping: bool = True  # Test connections before using them
+    db_connect_timeout: int = 10  # Seconds to wait for initial connection
+    db_read_timeout: int = 30  # Seconds to wait for query results
+    db_write_timeout: int = 30  # Seconds to wait for write operations
+
+    # Database Retry Settings
+    db_max_retries: int = 3  # Maximum retry attempts for failed operations
+    db_retry_delay: float = 1.0  # Initial delay between retries (seconds)
+    db_retry_backoff: float = 2.0  # Exponential backoff multiplier
+
     # JWT Authentication
     jwt_secret_key: str = "your-secret-key-change-this-in-production"
     jwt_algorithm: str = "HS256"
