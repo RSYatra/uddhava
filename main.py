@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import devotee_auth, devotees, diagnostics, health
+from app.api.routes import devotee_auth, devotees, health
 from app.core.auth_middleware import (
     AuthSecurityMiddleware,
     ContentSecurityPolicyMiddleware,
@@ -356,9 +356,6 @@ def register_routes(app: FastAPI) -> None:
 
     # Health checks (no authentication required)
     app.include_router(health.router, prefix="/api/v1")
-
-    # Diagnostics routes (debugging tools)
-    app.include_router(diagnostics.router, prefix="/api/v1")
 
     # Devotee authentication routes (new unified auth system)
     app.include_router(devotee_auth.router, prefix="/api/v1")

@@ -30,7 +30,7 @@ from app.schemas.devotee import (
     DevoteeStatsResponse,
     DevoteeUpdate,
 )
-from app.services.email_service import EmailService
+from app.services.gmail_service import GmailService
 
 logger = logging.getLogger(__name__)
 
@@ -537,7 +537,7 @@ class DevoteeService:
 
             # Send success email
             try:
-                email_service = EmailService()
+                email_service = GmailService()
                 await email_service.send_email_verification_success(
                     verified_email, devotee.legal_name
                 )
@@ -594,7 +594,7 @@ class DevoteeService:
 
     async def _send_verification_email(self, devotee: Devotee):
         """Send verification email to devotee."""
-        email_service = EmailService()
+        email_service = GmailService()
         await email_service.send_email_verification(
             email=devotee.email,
             user_name=devotee.legal_name,
@@ -620,7 +620,7 @@ class DevoteeService:
             devotee.password_reset_expires = datetime.now(UTC) + timedelta(hours=1)
 
             # Send reset email
-            email_service = EmailService()
+            email_service = GmailService()
             await email_service.send_password_reset_email(
                 email=devotee.email,
                 reset_token=devotee.password_reset_token,
