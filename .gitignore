@@ -135,6 +135,7 @@ alembic/versions/__pycache__/
 
 # OAuth2 credentials (sensitive)
 token.pickle
+token.json
 credentials.json
 client_secret.json
 

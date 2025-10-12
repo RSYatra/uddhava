@@ -41,7 +41,7 @@ class GmailService:
         self.template_dir = Path(__file__).parent.parent.parent / "templates" / "emails"
 
     def _load_credentials(self) -> Credentials | None:
-        """Load OAuth2 credentials from token.pickle file."""
+        """Load OAuth2 credentials from token.pickle or token.json file."""
         try:
             creds_path = Path(settings.gmail_credentials_file)
             if not creds_path.exists():
@@ -51,17 +51,51 @@ class GmailService:
                     detail="Gmail credentials not configured",
                 )
 
-            with open(creds_path, "rb") as token:
-                creds = pickle.load(token)  # nosec B301 - Safe: loading our own OAuth2 credentials
+            # Support both pickle and JSON formats
+            if creds_path.suffix == ".json":
+                # Load from JSON (more reliable for cloud deployments)
+                import json
+
+                with open(creds_path) as f:
+                    creds_dict = json.load(f)
+
+                creds = Credentials(
+                    token=creds_dict.get("token"),
+                    refresh_token=creds_dict.get("refresh_token"),
+                    token_uri=creds_dict.get("token_uri"),
+                    client_id=creds_dict.get("client_id"),
+                    client_secret=creds_dict.get("client_secret"),
+                    scopes=creds_dict.get("scopes"),
+                )
+                logger.info("Loaded Gmail credentials from JSON")
+            else:
+                # Load from pickle (backward compatibility)
+                with open(creds_path, "rb") as token:
+                    creds = pickle.load(token)  # nosec B301 - Safe: loading our own OAuth2 credentials
+                logger.info("Loaded Gmail credentials from pickle")
 
             # Refresh token if expired
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
-                    # Save refreshed credentials
-                    with open(creds_path, "wb") as token:
-                        pickle.dump(creds, token)  # nosec B301 - Safe: our own OAuth2 credentials
                     logger.info("Gmail credentials refreshed")
+
+                    # Save refreshed credentials (JSON only, pickle stays read-only)
+                    if creds_path.suffix == ".json":
+                        import json
+
+                        creds_dict = {
+                            "token": creds.token,
+                            "refresh_token": creds.refresh_token,
+                            "token_uri": creds.token_uri,
+                            "client_id": creds.client_id,
+                            "client_secret": creds.client_secret,
+                            "scopes": creds.scopes,
+                        }
+                        with open(creds_path, "w") as f:
+                            json.dump(creds_dict, f)
+                        logger.info("Saved refreshed credentials to JSON")
+
                 except Exception as e:
                     logger.error(f"Failed to refresh credentials: {e}")
                     raise HTTPException(
@@ -79,6 +113,7 @@ class GmailService:
             )
         except Exception as e:
             logger.error(f"Error loading Gmail credentials: {e}")
+            logger.exception("Full traceback:")
             raise HTTPException(
                 status_code=503,
                 detail=f"Gmail credentials error: {type(e).__name__}",
