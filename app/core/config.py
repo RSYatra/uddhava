@@ -81,16 +81,10 @@ class Settings(BaseSettings):
     # Security
     debug_db_token: str | None = None
 
-    # Email Configuration
-    mail_username: str = "test@example.com"
-    mail_password: str = "test-password"
-    mail_from: str = "test@example.com"
-    mail_port: int = 587
-    mail_server: str = "smtp.gmail.com"
-    mail_starttls: bool = True
-    mail_ssl_tls: bool = False
-    mail_use_credentials: bool = True
-    mail_validate_certs: bool = True
+    # Email Configuration (Gmail API with OAuth2)
+    gmail_credentials_file: str = "token.pickle"  # Path to OAuth2 token file
+    gmail_from_email: str = "test@example.com"  # Your Gmail address
+    gmail_from_name: str = "Radha Shyam Sundar Seva"  # Display name in emails
 
     # Password Reset
     password_reset_token_expire_hours: int = 1
@@ -156,28 +150,11 @@ class Settings(BaseSettings):
         """Get all allowed file extensions."""
         return self.allowed_image_extensions + self.allowed_document_extensions
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        # Map environment variable names to settings
-        env_prefix = ""
-        fields = {
-            "jwt_secret_key": {"env": "JWT_SECRET_KEY"},
-            "jwt_access_token_expire_minutes": {"env": "JWT_ACCESS_TOKEN_EXPIRE_MINUTES"},
-            "max_upload_size_mb": {"env": "MAX_UPLOAD_SIZE_MB"},
-            "mail_username": {"env": "MAIL_USERNAME"},
-            "mail_password": {"env": "MAIL_PASSWORD"},
-            "mail_from": {"env": "MAIL_FROM"},
-            "mail_port": {"env": "MAIL_PORT"},
-            "mail_server": {"env": "MAIL_SERVER"},
-            "password_reset_token_expire_hours": {"env": "PASSWORD_RESET_TOKEN_EXPIRE_HOURS"},
-            "password_reset_url_base": {"env": "PASSWORD_RESET_URL_BASE"},
-            "email_verification_token_expire_hours": {
-                "env": "EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS"
-            },
-            "email_verification_url_base": {"env": "EMAIL_VERIFICATION_URL_BASE"},
-            "frontend_login_url": {"env": "FRONTEND_LOGIN_URL"},
-        }
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 @lru_cache
