@@ -17,18 +17,36 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _create_email_config():
+    """Create email configuration with error handling."""
+    try:
+        return ConnectionConfig(
+            MAIL_USERNAME=settings.mail_username,
+            MAIL_PASSWORD=settings.mail_password,
+            MAIL_FROM=settings.mail_from,
+            MAIL_PORT=settings.mail_port,
+            MAIL_SERVER=settings.mail_server,
+            MAIL_STARTTLS=settings.mail_starttls,
+            MAIL_SSL_TLS=settings.mail_ssl_tls,
+            USE_CREDENTIALS=settings.mail_use_credentials,
+            VALIDATE_CERTS=settings.mail_validate_certs,
+        )
+    except Exception as e:
+        logger.error(f"Failed to create email configuration: {e}")
+        raise
+
+
 # Email configuration
-conf = ConnectionConfig(
-    MAIL_USERNAME=settings.mail_username,
-    MAIL_PASSWORD=settings.mail_password,
-    MAIL_FROM=settings.mail_from,
-    MAIL_PORT=settings.mail_port,
-    MAIL_SERVER=settings.mail_server,
-    MAIL_STARTTLS=settings.mail_starttls,
-    MAIL_SSL_TLS=settings.mail_ssl_tls,
-    USE_CREDENTIALS=settings.mail_use_credentials,
-    VALIDATE_CERTS=settings.mail_validate_certs,
-)
+try:
+    conf = _create_email_config()
+    logger.info(
+        f"Email service configured: {settings.mail_server}:{settings.mail_port} "
+        f"(STARTTLS={settings.mail_starttls}, SSL={settings.mail_ssl_tls})"
+    )
+except Exception as e:
+    logger.error(f"Email configuration failed: {e}")
+    conf = None
 
 
 class EmailService:
@@ -36,8 +54,16 @@ class EmailService:
 
     def __init__(self):
         """Initialize the email service."""
+        if conf is None:
+            logger.error("Email configuration not available - email service disabled")
+            raise HTTPException(
+                status_code=503,
+                detail="Email service is not configured. Please contact administrator.",
+            )
+
         self.fast_mail = FastMail(conf)
         self.template_dir = Path(__file__).parent.parent.parent / "templates" / "emails"
+        logger.debug(f"Email service initialized with template dir: {self.template_dir}")
 
     def _load_template(self, template_name: str) -> str:
         """Load email template from file.
@@ -77,9 +103,12 @@ class EmailService:
         Raises:
             HTTPException: If email sending fails
         """
+        logger.info(f"Attempting to send password reset email to {email}")
+
         try:
             # Generate reset URL
             reset_url = f"{settings.password_reset_url_base}?token={reset_token}"
+            logger.debug(f"Reset URL generated: {reset_url[:50]}...")
 
             # Calculate token expiration time
             expires_in = settings.password_reset_token_expire_hours
@@ -89,6 +118,7 @@ class EmailService:
             subject = "Password Reset Request - Radha Shyam Sundar Seva"
 
             # Load and render HTML template from file
+            logger.debug("Loading password reset email template")
             html_template_content = self._load_template("password_reset.html")
             template = Template(html_template_content)
             html_content = template.render(
@@ -98,6 +128,7 @@ class EmailService:
                 expires_in=expires_in,
                 expiry_time=expiry_time.strftime("%Y-%m-%d %H:%M UTC"),
             )
+            logger.debug("Email template rendered successfully")
 
             # Create message with HTML content
             message = MessageSchema(
@@ -106,6 +137,7 @@ class EmailService:
                 body=html_content,  # HTML content goes in body
                 subtype=MessageType.html,
             )
+            logger.debug(f"Sending email via SMTP: {settings.mail_server}:{settings.mail_port}")
 
             # Send email
             await self.fast_mail.send_message(message)
@@ -113,11 +145,32 @@ class EmailService:
             logger.info(f"Password reset email sent successfully to {email}")
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to send password reset email to {email}: {e!s}")
+        except FileNotFoundError as e:
+            logger.error(f"Email template not found: {e}")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to send reset email. Please try again later.",
+                detail="Email template not found. Please contact administrator.",
+            )
+        except ConnectionRefusedError as e:
+            logger.error(f"SMTP connection refused: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Email service temporarily unavailable. Please try again later.",
+            )
+        except TimeoutError as e:
+            logger.error(f"SMTP connection timeout: {e}")
+            raise HTTPException(
+                status_code=504,
+                detail="Email service timeout. Please try again later.",
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to send password reset email to {email}: {type(e).__name__}: {e!s}"
+            )
+            logger.exception("Full email error traceback:")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to send reset email: {type(e).__name__}. Please try again later or contact support.",
             )
 
     async def send_email_verification(
@@ -140,9 +193,12 @@ class EmailService:
         Raises:
             HTTPException: If email sending fails
         """
+        logger.info(f"Attempting to send verification email to {email}")
+
         try:
             # Generate verification URL
             verification_url = f"{settings.email_verification_url_base}?token={verification_token}"
+            logger.debug(f"Verification URL generated: {verification_url[:50]}...")
 
             # Calculate token expiration time
             expires_in = 24  # 24 hours
@@ -152,6 +208,7 @@ class EmailService:
             subject = "Email Verification - Radha Shyam Sundar Seva"
 
             # Load and render HTML template from file
+            logger.debug("Loading email verification template")
             html_template_content = self._load_template("email_verification.html")
             template = Template(html_template_content)
             html_content = template.render(
@@ -161,6 +218,7 @@ class EmailService:
                 expires_in=expires_in,
                 expiry_time=expiry_time.strftime("%Y-%m-%d %H:%M UTC"),
             )
+            logger.debug("Email template rendered successfully")
 
             # Create message with HTML content
             message = MessageSchema(
@@ -169,6 +227,7 @@ class EmailService:
                 body=html_content,  # HTML content goes in body
                 subtype=MessageType.html,
             )
+            logger.debug(f"Sending email via SMTP: {settings.mail_server}:{settings.mail_port}")
 
             # Send email
             await self.fast_mail.send_message(message)
@@ -176,11 +235,30 @@ class EmailService:
             logger.info(f"Email verification sent successfully to {email}")
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to send verification email to {email}: {e!s}")
+        except FileNotFoundError as e:
+            logger.error(f"Email template not found: {e}")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to send verification email. Please try again later.",
+                detail="Email template not found. Please contact administrator.",
+            )
+        except ConnectionRefusedError as e:
+            logger.error(f"SMTP connection refused: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Email service temporarily unavailable. Please try again later.",
+            )
+        except TimeoutError as e:
+            logger.error(f"SMTP connection timeout: {e}")
+            raise HTTPException(
+                status_code=504,
+                detail="Email service timeout. Please try again later.",
+            )
+        except Exception as e:
+            logger.error(f"Failed to send verification email to {email}: {type(e).__name__}: {e!s}")
+            logger.exception("Full email error traceback:")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to send verification email: {type(e).__name__}. Please try again later or contact support.",
             )
 
     async def send_email_verification_success(

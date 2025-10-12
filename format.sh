@@ -19,5 +19,5 @@ ruff format .
 echo "🔍 Running Ruff linter with auto-fix..."
 ruff check . --fix
 
-echo "✅ Done! All formatting issues fixed."
-echo "💡 Tip: You can now commit your changes."
+echo "Done! All formatting issues fixed."
+echo "Tip: You can now commit your changes."

@@ -1892,7 +1892,8 @@ async def devotee_forgot_password(
 
     except HTTPException as e:
         # Convert HTTPException to standardized response
-        logger.warning(f"Forgot password failed: {e.detail}")
+        # This catches email service errors with proper status codes
+        logger.warning(f"Forgot password failed with HTTP {e.status_code}: {e.detail}")
 
         # Intelligently add data based on error type
         response_data = None
@@ -1906,19 +1907,21 @@ async def devotee_forgot_password(
             data=response_data,
         )
     except SQLAlchemyError as e:
-        logger.error(f"Database error during forgot password: {e!s}")
+        logger.error(f"Database error during forgot password: {type(e).__name__}: {e!s}")
+        logger.exception("Full database error traceback:")
         return ForgotPasswordResponse(
             success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred while sending password reset email",
+            message="Database error occurred while processing password reset",
             data=None,
         )
     except Exception as e:
-        logger.error(f"Unexpected error during forgot password: {e!s}")
+        logger.error(f"Unexpected error during forgot password: {type(e).__name__}: {e!s}")
+        logger.exception("Full error traceback:")
         return ForgotPasswordResponse(
             success=False,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred while sending password reset email",
+            message=f"An unexpected error occurred: {type(e).__name__}. Please try again or contact support.",
             data=None,
         )
 
