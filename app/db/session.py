@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from functools import wraps
 
 from sqlalchemy import create_engine, event, exc, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from app.core.config import settings
@@ -163,9 +163,8 @@ def invalidate_handler(dbapi_connection, connection_record, exception):
     logger.warning(f"Database connection invalidated: {exception}")
 
 
-# Database dependency with retry logic
-@with_db_retry()
-def get_db() -> Generator[Session]:
+# Database dependency (retry logic is handled inside via pool_pre_ping and connection events)
+def get_db() -> Generator:
     """
     Database dependency that provides a database session with automatic retry.
 

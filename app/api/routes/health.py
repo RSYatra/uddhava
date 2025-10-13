@@ -13,23 +13,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
-from app.db.session import SessionLocal, check_database_health, engine
+from app.db.session import check_database_health, engine
 from app.schemas.health import HealthResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Health"])
-
-
-def get_db():
-    """Database dependency for health checks."""
-    db = SessionLocal()
-    try:
-        yield db
-    except Exception:
-        logger.exception("Database error during health check")
-    finally:
-        db.close()
 
 
 @router.get("/health", response_model=HealthResponse, summary="Health Check")

@@ -19,8 +19,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 from pydantic import Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -32,9 +30,9 @@ from app.core.auth_security import (
 )
 from app.core.config import settings
 from app.core.dependencies import require_admin
-from app.core.security import create_access_token
+from app.core.security import create_access_token, get_current_user
 from app.db.models import Devotee
-from app.db.session import SessionLocal
+from app.db.session import get_db
 from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.devotee import (
     DevoteeSimpleCreate,
@@ -61,62 +59,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Devotee Authentication"])
 
 
-def get_db():
-    """Database dependency with robust error handling."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_current_devotee(
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
-    db: Session = Depends(get_db),
-):
-    """
-    Dependency to get the current authenticated devotee from JWT token.
-
-    Args:
-        credentials: HTTP Bearer authorization credentials
-        db: Database session
-
-    Returns:
-        Current authenticated devotee
-
-    Raises:
-        HTTPException: If token is invalid or devotee not found
-    """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    try:
-        # Extract and verify token
-        token = credentials.credentials
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-
-        if payload is None:
-            raise credentials_exception
-
-        # For devotee tokens, 'sub' contains devotee.id and role should be 'devotee'
-        devotee_id: str = payload.get("sub")
-        role: str = payload.get("role")
-
-        if devotee_id is None or role != "devotee":
-            raise credentials_exception
-
-        # Get devotee from database by ID
-        devotee = db.query(Devotee).filter(Devotee.id == int(devotee_id)).first()
-        if devotee is None:
-            raise credentials_exception
-
-        return devotee
-
-    except (JWTError, ValueError):
-        raise credentials_exception from None
+# Note: get_db and get_current_user are imported from their centralized locations
+# - get_db from app.db.session
+# - get_current_user from app.core.security
 
 
 @router.post(
@@ -787,7 +732,7 @@ async def complete_devotee_profile(
         description="Document 5 (max 5MB, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)",
     ),
     # Authentication and database dependencies
-    current_devotee: Devotee = Depends(get_current_devotee),
+    current_devotee: Devotee = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
