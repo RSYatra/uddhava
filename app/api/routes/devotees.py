@@ -24,7 +24,7 @@ from app.core.config import settings
 from app.core.dependencies import check_resource_access, require_admin
 from app.core.security import get_current_user
 from app.db.models import Devotee, Gender, InitiationStatus, MaritalStatus, UserRole
-from app.db.session import SessionLocal
+from app.db.session import get_db
 from app.schemas.devotee import (
     DevoteeCreate,
     DevoteeSearchFilters,
@@ -44,25 +44,6 @@ from app.services.devotee_service import DevoteeService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/devotees", tags=["Devotees"])
-
-
-def get_db():
-    """Database dependency with robust error handling."""
-    db = SessionLocal()
-    try:
-        yield db
-    except SQLAlchemyError:
-        logger.exception("Database error during request")
-        try:
-            db.rollback()
-        except Exception:
-            logger.exception("Failed to rollback transaction")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred",
-        )
-    finally:
-        db.close()
 
 
 @router.get(
