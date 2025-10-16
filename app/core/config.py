@@ -73,8 +73,12 @@ class Settings(BaseSettings):
         ".webp",
     ]
 
-    # CORS
-    allowed_origins: list = ["*"]
+    # CORS - Allowed origins for production and development
+    allowed_origins: list = [
+        "https://rsyatra.onrender.com",  # Production frontend
+        "http://localhost:1728",  # Local frontend for development
+        "http://localhost:8000",  # Backend testing
+    ]
     allowed_methods: list = ["*"]
     allowed_headers: list = ["*"]
 
@@ -82,8 +86,10 @@ class Settings(BaseSettings):
     debug_db_token: str | None = None
 
     # Email Configuration (Gmail API with OAuth2)
-    gmail_credentials_file: str = "token.pickle"  # Path to OAuth2 token file
-    gmail_from_email: str = "test@example.com"  # Your Gmail address
+    # With token.json present: Real emails sent via Gmail API (dev and prod)
+    # Without token.json: Emails logged to console (dev only, production fails)
+    gmail_credentials_file: str = "token.json"  # OAuth2 credentials (token.json or token.pickle)
+    gmail_from_email: str = "test@example.com"  # Gmail sender address
     gmail_from_name: str = "Radha Shyam Sundar Seva"  # Display name in emails
 
     # Password Reset

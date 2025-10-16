@@ -45,6 +45,14 @@ class GmailService:
         try:
             creds_path = Path(settings.gmail_credentials_file)
             if not creds_path.exists():
+                # In development, allow missing credentials - emails will be logged instead
+                if not settings.is_production:
+                    logger.warning(
+                        f"Gmail credentials not found: {creds_path}. "
+                        "Emails will be logged to console (development mode)."
+                    )
+                    return None
+                # In production, credentials are required
                 logger.error(f"Credentials file not found: {creds_path}")
                 raise HTTPException(
                     status_code=503,
@@ -111,7 +119,18 @@ class GmailService:
                 status_code=503,
                 detail="Gmail credentials not found",
             )
+        except HTTPException:
+            # Re-raise HTTP exceptions (production mode)
+            raise
         except Exception as e:
+            # In development, allow credential errors - emails will be logged
+            if not settings.is_production:
+                logger.warning(
+                    f"Gmail credentials error (development mode): {e}. "
+                    "Emails will be logged to console."
+                )
+                return None
+            # In production, raise the error
             logger.error(f"Error loading Gmail credentials: {e}")
             logger.exception("Full traceback:")
             raise HTTPException(
@@ -162,6 +181,20 @@ class GmailService:
 
         try:
             if not self.service:
+                # In development mode without credentials, log email instead of sending
+                if not settings.is_production:
+                    logger.warning(
+                        f"\n{'=' * 80}\n"
+                        f"EMAIL (Development Mode - Not Actually Sent)\n"
+                        f"{'=' * 80}\n"
+                        f"To: {to}\n"
+                        f"Subject: {subject}\n"
+                        f"{'=' * 80}\n"
+                        f"{html_content[:500]}...\n"
+                        f"{'=' * 80}\n"
+                    )
+                    return True
+                # In production, service is required
                 raise HTTPException(
                     status_code=503,
                     detail="Gmail service not initialized",

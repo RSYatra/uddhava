@@ -163,20 +163,12 @@ def setup_middleware(app: FastAPI) -> None:
 
     # CORS middleware
     # Note: Cannot use "*" with allow_credentials=True (CORS specification)
-    # Instead, explicitly list allowed origins or use allow_origin_regex
-    if settings.is_production:
-        # Production: Only allow specific origins from config
-        allowed_origins = settings.allowed_origins if settings.allowed_origins != ["*"] else []
-    else:
-        # Development: Allow common local development origins
-        allowed_origins = [
-            "http://localhost:3000",
-            "http://localhost:8000",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:8000",
-            "http://localhost:8080",  # Common alternative port
-            "http://127.0.0.1:8080",
-        ]
+    # Instead, explicitly list allowed origins
+    allowed_origins = [
+        "https://rsyatra.onrender.com",  # Production frontend
+        "http://localhost:1728",  # Local frontend for development
+        "http://localhost:8000",  # Backend testing
+    ]
 
     app.add_middleware(
         CORSMiddleware,
