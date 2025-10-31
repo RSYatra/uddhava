@@ -75,7 +75,9 @@ class Settings(BaseSettings):
 
     # CORS - Allowed origins for production and development
     allowed_origins: list = [
-        "https://rsyatra.onrender.com",  # Production frontend
+        "https://rsyatra.com",  # Production frontend (custom domain)
+        "https://www.rsyatra.com",  # Production frontend with www (custom domain)
+        "https://rsyatra.onrender.com",  # Production frontend (Render subdomain - legacy)
         "http://localhost:1728",  # Local frontend for development
         "http://localhost:8000",  # Backend testing
     ]
