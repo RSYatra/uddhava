@@ -164,8 +164,10 @@ def setup_middleware(app: FastAPI) -> None:
     # CORS middleware
     # Note: Cannot use "*" with allow_credentials=True (CORS specification)
     # Instead, explicitly list allowed origins
-    allowed_origins = [
-        "https://rsyatra.onrender.com",  # Production frontend
+    allowed_origins: list = [
+        "https://rsyatra.com",  # Production frontend (custom domain)
+        "https://www.rsyatra.com",  # Production frontend with www (custom domain)
+        "https://rsyatra.onrender.com",  # Production frontend (Render subdomain - legacy)
         "http://localhost:1728",  # Local frontend for development
         "http://localhost:8000",  # Backend testing
     ]
