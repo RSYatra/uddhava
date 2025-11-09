@@ -1828,10 +1828,7 @@ async def devotee_forgot_password(
         return ForgotPasswordResponse(
             success=True,
             status_code=status.HTTP_200_OK,
-            message=(
-                "If this email is registered and verified, "
-                "you will receive password reset instructions."
-            ),
+            message="Password reset email sent successfully",
             data={"email": email},
         )
 
