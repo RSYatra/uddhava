@@ -605,8 +605,10 @@ class DevoteeService:
         """Send password reset email to devotee."""
         devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
-            # Don't reveal if email exists for security
-            return True
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
 
         if getattr(devotee, "email_verified", False) is not True:
             raise HTTPException(
