@@ -5,7 +5,7 @@ This module contains all the Pydantic models used for API request/response
 validation and serialization for the enhanced devotee management system.
 """
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -19,20 +19,20 @@ class DevoteeBase(BaseModel):
 
     # Personal Information
     legal_name: str = Field(..., min_length=1, max_length=127, description="Legal full name")
-    date_of_birth: date = Field(..., description="Date of birth")
-    gender: Gender = Field(..., description="Gender")
-    marital_status: MaritalStatus = Field(..., description="Marital status")
+    date_of_birth: date | None = Field(None, description="Date of birth")
+    gender: Gender | None = Field(None, description="Gender")
+    marital_status: MaritalStatus | None = Field(None, description="Marital status")
 
     # Contact Information
     email: EmailStr = Field(..., description="Email address")
-    country_code: str = Field(
-        ...,
+    country_code: str | None = Field(
+        None,
         min_length=1,
         max_length=5,
         description="Country code (e.g., 91 for India)",
     )
-    mobile_number: str = Field(
-        ...,
+    mobile_number: str | None = Field(
+        None,
         min_length=10,
         max_length=15,
         description="Mobile number without country code",
@@ -42,8 +42,8 @@ class DevoteeBase(BaseModel):
     )
 
     # Family Information
-    father_name: str = Field(..., min_length=1, max_length=127, description="Father's name")
-    mother_name: str = Field(..., min_length=1, max_length=127, description="Mother's name")
+    father_name: str | None = Field(None, min_length=1, max_length=127, description="Father's name")
+    mother_name: str | None = Field(None, min_length=1, max_length=127, description="Mother's name")
     spouse_name: str | None = Field(None, max_length=127, description="Spouse name (if married)")
     date_of_marriage: date | None = Field(None, description="Date of marriage (if applicable)")
 
@@ -63,8 +63,11 @@ class DevoteeBase(BaseModel):
     )
     initiation_date: date | None = Field(None, description="Date of initiation")
     initiation_place: str | None = Field(None, max_length=127, description="Place of initiation")
-    spiritual_guide: str | None = Field(
-        None, max_length=127, description="Name of spiritual guide/mentor"
+    counselor: str | None = Field(
+        None,
+        max_length=127,
+        description="Name of spiritual guide/mentor",
+        validation_alias="spiritual_guide",
     )
 
     # ISKCON Journey
@@ -97,6 +100,8 @@ class DevoteeBase(BaseModel):
     @classmethod
     def validate_mobile_number(cls, v):
         """Validate mobile number format."""
+        if v is None:
+            return v
         # Remove any non-digit characters
         cleaned = "".join(c for c in v if c.isdigit())
         if len(cleaned) < 10 or len(cleaned) > 15:
@@ -107,7 +112,10 @@ class DevoteeBase(BaseModel):
     @classmethod
     def validate_date_of_birth(cls, v):
         """Validate date of birth is reasonable."""
-        if v and v > date.today():
+        if v is None:
+            return v
+
+        if v > date.today():
             raise ValueError("Date of birth cannot be in the future")
 
         # Check if age is reasonable (between 5 and 120 years)
@@ -250,21 +258,18 @@ class DevoteeOut(DevoteeBase):
     id: int = Field(..., description="Devotee's unique identifier")
     role: UserRole = Field(default=UserRole.USER, description="User role")
     children: list[dict[str, Any]] | None = Field(None, description="Children information")
-    created_at: datetime | None = Field(None, description="Account creation timestamp")
-    updated_at: datetime | None = Field(None, description="Last update timestamp")
 
     # Computed fields
-    full_name: str | None = Field(None, description="Full display name")
-    location_display: str | None = Field(None, description="Formatted location")
-    mobile_display: str | None = Field(None, description="Formatted mobile number")
-    children_count: int | None = Field(None, description="Number of children")
-    spiritual_journey_years: int | None = Field(
-        None, description="Years since introduction to ISKCON"
+    initiated_name: str | None = Field(None, description="Initiated devotee name")
+    is_harinam_initiated: bool | None = Field(
+        None, description="Whether devotee has Harinam initiation"
     )
-    is_initiated: bool | None = Field(None, description="Whether devotee is initiated")
     is_brahmin_initiated: bool | None = Field(
         None, description="Whether devotee has Brahmin initiation"
     )
+
+    # Exclude initiation_status from parent class
+    initiation_status: InitiationStatus | None = Field(None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 

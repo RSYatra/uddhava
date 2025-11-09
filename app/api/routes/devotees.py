@@ -264,10 +264,16 @@ async def get_devotee(
             )
 
         logger.info(f"Retrieved devotee profile: {devotee_id}")
+
+        # Check if profile is complete (based on date_of_birth)
+        is_complete = devotee.date_of_birth is not None
+        status_code = status.HTTP_200_OK if is_complete else status.HTTP_206_PARTIAL_CONTENT
+        message = "Devotee retrieved successfully" if is_complete else "Devotee profile incomplete"
+
         return StandardDevoteeResponse(
             success=True,
-            status_code=status.HTTP_200_OK,
-            message="Devotee retrieved successfully",
+            status_code=status_code,
+            message=message,
             data=devotee,
         )
 
