@@ -43,12 +43,12 @@ class Gender(str, Enum):
 class MaritalStatus(str, Enum):
     """Marital status enumeration."""
 
-    SINGLE = "SINGLE"
-    MARRIED = "MARRIED"
+    BACHELOR = "BACHELOR"
+    GRHASTA = "GRHASTA"
+    VANPRASTHA = "VANPRASTHA"
+    SANYAS = "SANYAS"
     DIVORCED = "DIVORCED"
     WIDOWED = "WIDOWED"
-    SEPARATED = "SEPARATED"
-    OTHERS = "OTHERS"
 
 
 class InitiationStatus(str, Enum):
