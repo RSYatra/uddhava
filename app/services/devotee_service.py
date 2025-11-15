@@ -22,6 +22,7 @@ from app.core.security import get_password_hash, verify_password
 from app.db.models import (
     Devotee,
     InitiationStatus,
+    MaritalStatus,
 )
 from app.schemas.devotee import (
     DevoteeCreate,
@@ -218,6 +219,91 @@ class DevoteeService:
     def get_devotee_by_email(self, db: Session, email: EmailStr) -> Devotee | None:
         """Get devotee by email with optimized query."""
         return db.query(Devotee).filter(Devotee.email == email.lower()).first()
+
+    def _validate_devotee_update(
+        self, devotee_update: DevoteeUpdate, existing_devotee: Devotee
+    ) -> None:
+        """
+        Validate business rules for devotee updates.
+
+        Args:
+            devotee_update: Update data
+            existing_devotee: Existing devotee record
+
+        Raises:
+            ValueError: If validation fails
+        """
+        # Extract update data
+        update_data = devotee_update.model_dump(exclude_unset=True)
+
+        # Validate date consistency
+        if "date_of_marriage" in update_data and update_data["date_of_marriage"]:
+            marriage_date = update_data["date_of_marriage"]
+            birth_date = (
+                update_data.get("date_of_birth")
+                if "date_of_birth" in update_data
+                else existing_devotee.date_of_birth
+            )
+            if birth_date and marriage_date < birth_date:
+                raise ValueError("Date of marriage cannot be before date of birth")
+
+        if "initiation_date" in update_data and update_data["initiation_date"]:
+            initiation_date = update_data["initiation_date"]
+            birth_date = (
+                update_data.get("date_of_birth")
+                if "date_of_birth" in update_data
+                else existing_devotee.date_of_birth
+            )
+            if birth_date and initiation_date < birth_date:
+                raise ValueError("Initiation date cannot be before date of birth")
+
+        if "chanting_16_rounds_since" in update_data and update_data["chanting_16_rounds_since"]:
+            chanting_since = update_data["chanting_16_rounds_since"]
+            birth_date = (
+                update_data.get("date_of_birth")
+                if "date_of_birth" in update_data
+                else existing_devotee.date_of_birth
+            )
+            if birth_date and chanting_since < birth_date:
+                raise ValueError("Chanting start date cannot be before date of birth")
+
+        # Validate marital status consistency
+        if "marital_status" in update_data:
+            marital_status = update_data["marital_status"]
+            if marital_status in [MaritalStatus.GRHASTA]:
+                spouse_name = (
+                    update_data.get("spouse_name")
+                    if "spouse_name" in update_data
+                    else existing_devotee.spouse_name
+                )
+                if not spouse_name:
+                    logger.warning(
+                        f"Devotee {existing_devotee.id} marked as GRHASTA but no spouse name provided"
+                    )
+
+        # Validate initiation requirements
+        if "initiation_status" in update_data:
+            initiation_status = update_data["initiation_status"]
+            if initiation_status in [InitiationStatus.HARINAM, InitiationStatus.BRAHMIN]:
+                spiritual_master = (
+                    update_data.get("spiritual_master")
+                    if "spiritual_master" in update_data
+                    else existing_devotee.spiritual_master
+                )
+                if not spiritual_master:
+                    raise ValueError(
+                        f"Spiritual master is required for initiation status: {initiation_status.value}"
+                    )
+
+                initiation_date = (
+                    update_data.get("initiation_date")
+                    if "initiation_date" in update_data
+                    else existing_devotee.initiation_date
+                )
+                if not initiation_date:
+                    logger.warning(
+                        f"Devotee {existing_devotee.id} has initiation status but no initiation date"
+                    )
 
     def update_devotee(
         self,
