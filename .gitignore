@@ -141,3 +141,4 @@ client_secret.json
 
 # Static files (if generated)
 static/
+dev/
