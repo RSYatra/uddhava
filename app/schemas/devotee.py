@@ -271,6 +271,29 @@ class DevoteeOut(DevoteeBase):
     # Exclude initiation_status from parent class
     initiation_status: InitiationStatus | None = Field(None, exclude=True)
 
+    @field_validator("children", mode="before")
+    @classmethod
+    def extract_children_list(cls, v):
+        """
+        Extract children list from stored database structure.
+
+        Database stores: {"count": X, "children": [...], "updated_at": "..."}
+        API returns: [...]
+        """
+        if v is None:
+            return None
+
+        # If it's already a list, return as is
+        if isinstance(v, list):
+            return v
+
+        # If it's a dict with children key (database format), extract the list
+        if isinstance(v, dict) and "children" in v:
+            return v["children"]
+
+        # Otherwise return as is (will fail validation if invalid)
+        return v
+
     model_config = ConfigDict(from_attributes=True)
 
 
