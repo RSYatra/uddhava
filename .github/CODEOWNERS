@@ -1,0 +1,48 @@
+# Code Owners for Uddhava Project
+#
+# This file defines individuals or teams responsible for code in this repository.
+# When a pull request modifies code that has an owner, that owner will be
+# automatically requested for review.
+#
+# More info: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+# These owners will be requested for review when someone opens a PR
+* @pktparticle
+* @RSYatra
+
+# API Routes - Require review from backend team
+/app/api/ @pktparticle
+/app/api/routes/ @pktparticle
+
+# Database models and migrations - Critical changes
+/app/db/ @pktparticle
+/alembic/ @pktparticle
+/alembic/versions/ @pktparticle
+
+# Core security and authentication - Requires security review
+/app/core/security.py @pktparticle
+/app/core/auth_*.py @pktparticle
+/app/core/password_validation.py @pktparticle
+
+# Configuration - Requires careful review
+/app/core/config.py @pktparticle
+/.env.example @pktparticle
+
+# CI/CD and deployment - Requires DevOps review
+/.github/workflows/ @pktparticle
+/Procfile @pktparticle
+/requirements.txt @pktparticle
+
+# Documentation - Can be reviewed by anyone
+/*.md
+/docs/ @pktparticle
+
+# Tests - Should be reviewed with the code they test
+/tests/ @pktparticle
+
+# Schemas - Require API design review
+/app/schemas/ @pktparticle
+
+# Services - Business logic review
+/app/services/ @pktparticle

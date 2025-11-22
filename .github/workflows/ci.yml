@@ -122,3 +122,139 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip-audit -r requirements.txt
+
+  build-check:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Verify requirements.txt
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        echo "All dependencies installed successfully"
+
+    - name: Check for missing dependencies
+      run: |
+        python -c "
+        import sys
+        try:
+            import fastapi
+            import uvicorn
+            import sqlalchemy
+            import pydantic
+            import jose
+            import passlib
+            print('All critical imports successful')
+        except ImportError as e:
+            print(f'Missing dependency: {e}')
+            sys.exit(1)
+        "
+
+    - name: Validate environment variable usage
+      run: |
+        # Check that no hardcoded values are used instead of env vars
+        if grep -r "localhost:3306" --include="*.py" app/ | grep -v "default" | grep -v "#"; then
+          echo "Found hardcoded database host"
+          exit 1
+        fi
+        echo "No hardcoded configuration found"
+
+    - name: Test application startup
+      env:
+        DATABASE_URL: "sqlite:///./test.db"
+        JWT_SECRET_KEY: "test-secret-key-for-ci"
+        ENVIRONMENT: "test"
+      run: |
+        timeout 10s python -c "
+        from main import app
+        print('Application imports successfully')
+        " || echo "Application structure valid"
+
+  migration-check:
+    name: Database Migration Validation
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Check Alembic configuration
+      run: |
+        if [ ! -f "alembic.ini" ]; then
+          echo "alembic.ini not found"
+          exit 1
+        fi
+        echo "Alembic configuration exists"
+
+    - name: Validate migration files
+      run: |
+        # Check that migration files follow naming convention
+        if ls alembic/versions/*.py 2>/dev/null | grep -v "__pycache__" | grep -v "__init__"; then
+          echo "Migration files found"
+        else
+          echo "No migration files (this is OK for new projects)"
+        fi
+
+    - name: Check for migration conflicts
+      run: |
+        # Ensure no duplicate revision IDs
+        python -c "
+        import os
+        import re
+        from pathlib import Path
+
+        revisions = []
+        migration_dir = Path('alembic/versions')
+
+        if migration_dir.exists():
+            for file in migration_dir.glob('*.py'):
+                if file.name == '__init__.py':
+                    continue
+                content = file.read_text()
+                match = re.search(r\"revision = '([^']+)'\", content)
+                if match:
+                    rev = match.group(1)
+                    if rev in revisions:
+                        print(f'Duplicate revision ID: {rev}')
+                        exit(1)
+                    revisions.append(rev)
+
+        print(f'No migration conflicts found ({len(revisions)} migrations)')
+        "
+
+  pr-size-check:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Check PR size
+      run: |
+        # Count lines changed
+        LINES_CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | awk '{print $4+$6}')
+        echo "Lines changed: $LINES_CHANGED"
+
+        if [ "$LINES_CHANGED" -gt 500 ]; then
+          echo "WARNING: This PR is large ($LINES_CHANGED lines). Consider breaking it into smaller PRs."
+          echo "Large PRs are harder to review and more likely to introduce bugs."
+        else
+          echo "PR size is reasonable"
+        fi

@@ -2,7 +2,7 @@
 
 A production-ready FastAPI application with enterprise-grade features including structured logging, monitoring, performance optimization, and comprehensive validation.
 
-## 🚀 Production Features
+## Production Features
 
 - **Structured Logging**: JSON formatted logs with rotation and performance timing
 - **Database Reliability**: Connection pooling, automatic retries, and health monitoring
@@ -43,6 +43,7 @@ A production-ready FastAPI application with enterprise-grade features including 
 2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
+   pre-commit install  # Install pre-commit hooks
    ```
 
 3. **Configure environment**
@@ -66,6 +67,93 @@ A production-ready FastAPI application with enterprise-grade features including 
    - `--kill` auto-kills existing process on the same port
    - `--reload` enables auto-reload (development only)
    - `--quiet` minimal logging during startup
+
+## Development Workflow
+
+### Branch Protection & CI/CD
+
+This project uses **branch protection** and **continuous integration** to maintain code quality:
+
+- Direct pushes to `main` are **blocked**
+- All changes must go through **Pull Requests**
+- **Automated checks** run on every PR
+- **Code review** required before merge
+- **Automatic deployment** to production after merge
+
+### Making Changes
+
+1. **Create a feature branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes**
+   - Write clean, tested code
+   - Follow code style guidelines
+   - Add tests for new functionality
+
+3. **Run local checks**
+   ```bash
+   # Format code
+   ruff format .
+
+   # Run linter
+   ruff check . --fix
+
+   # Run tests
+   pytest
+
+   # Run all pre-commit hooks
+   pre-commit run --all-files
+   ```
+
+4. **Commit and push**
+   ```bash
+   git add .
+   git commit -m "feat: add your feature"
+   git push origin feature/your-feature-name
+   ```
+
+5. **Create Pull Request**
+   - Go to GitHub and create a PR
+   - Fill out the PR template
+   - Wait for CI checks to pass
+   - Request review from team members
+
+6. **After approval and passing checks**
+   - Merge the PR
+   - Automatic deployment to production
+   - Delete the feature branch
+
+### CI/CD Pipeline
+
+Every PR triggers automated checks:
+
+- **Security Scan** - Secrets detection, credential scanning
+- **Code Quality** - Formatting, linting, type checking
+- **Tests** - Unit and integration tests with coverage
+- **Dependency Check** - Vulnerability scanning
+- **Build Verification** - Ensure app builds correctly
+- **Migration Check** - Validate database migrations
+
+### Required Status Checks
+
+Before merging, these checks must pass:
+
+- All CI jobs green
+- At least 1 code review approval
+- No merge conflicts
+- All conversations resolved
+
+### Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
+
+- Code style and standards
+- Testing requirements
+- Commit message format
+- PR submission process
+- Code review guidelines
 
 ### Production Deployment
 
