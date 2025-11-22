@@ -25,7 +25,7 @@ from app.core.config import get_settings  # noqa: E402
 from app.db.models import Base  # noqa: E402
 
 settings = get_settings()
-DATABASE_URL = settings.database_url
+DATABASE_URL = settings.get_database_url()
 
 target_metadata = Base.metadata
 

@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     # Log database URL safely
     try:
-        db_url_str = str(settings.database_url)
+        db_url_str = str(settings.get_database_url())
         db_info = db_url_str.split("@")[-1] if "@" in db_url_str else "localhost"
         logger.info(f"Database URL: {db_info}")
     except Exception:
@@ -186,7 +186,14 @@ def setup_middleware(app: FastAPI) -> None:
     if settings.is_production:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["localhost", "127.0.0.1"]
+            allowed_hosts=[
+                "localhost",
+                "127.0.0.1",
+                "*.run.app",
+                "rsyatra.com",
+                "*.rsyatra.com",
+                "*.onrender.com",
+            ]
             + ([settings.app_host] if hasattr(settings, "app_host") else []),
         )
 
@@ -251,7 +258,14 @@ def setup_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(SQLAlchemyError)
     async def database_exception_handler(request: Request, exc: SQLAlchemyError):
         """Handle database errors."""
-        logger.error(f"Database error on {request.method} {request.url.path}: {exc}")
+        # Log detailed error information for debugging
+        logger.error(
+            f"Database error on {request.method} {request.url.path}: {exc}",
+            exc_info=True,
+            extra={"error_type": type(exc).__name__, "error_details": str(exc)},
+        )
+        # Also print to stdout for Cloud Run logs
+        print(f"DATABASE ERROR: {type(exc).__name__}: {exc}", flush=True)
         return JSONResponse(
             status_code=500,
             content={

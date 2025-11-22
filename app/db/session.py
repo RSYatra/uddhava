@@ -21,7 +21,7 @@ logger = logging.getLogger("app.db")
 
 
 engine = create_engine(
-    settings.database_url,
+    settings.get_database_url(),
     # Connection pool settings
     poolclass=QueuePool,
     pool_size=settings.db_pool_size,
@@ -42,7 +42,7 @@ engine = create_engine(
             "read_timeout": settings.db_read_timeout,
             "write_timeout": settings.db_write_timeout,
         }
-        if "mysql" in settings.database_url
+        if "mysql" in settings.get_database_url()
         else {}
     ),
 )
@@ -189,7 +189,8 @@ def get_db() -> Generator:
         # Commit any pending transactions
         db.commit()
     except Exception as e:
-        logger.error(f"Database session error: {e}")
+        logger.error(f"Database session error: {e}", exc_info=True)
+        print(f"DB SESSION ERROR: {type(e).__name__}: {e}", flush=True)
         db.rollback()
         raise
     finally:

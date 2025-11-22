@@ -54,17 +54,23 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
     Args:
         data: The data to encode in the token (typically user info)
-        expires_delta: Optional custom expiration time
+        expires_delta: Optional custom expiration time. If None and jwt_access_token_expire_minutes
+                      is also None, token will never expire.
 
     Returns:
         JWT access token string
     """
     to_encode = data.copy()
+
+    # Only add expiration if explicitly requested or configured
     if expires_delta:
         expire = datetime.now(UTC) + expires_delta
-    else:
+        to_encode.update({"exp": expire})
+    elif settings.jwt_access_token_expire_minutes is not None:
         expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
-    to_encode.update({"exp": expire})
+        to_encode.update({"exp": expire})
+    # If both are None, no expiration is added (token never expires)
+
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     return encoded_jwt
 
