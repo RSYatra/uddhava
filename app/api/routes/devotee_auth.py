@@ -19,6 +19,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import JSONResponse
 from pydantic import Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -67,7 +68,6 @@ router = APIRouter(prefix="/auth", tags=["Devotee Authentication"])
 @router.post(
     "/signup",
     response_model=SignupResponse,
-    status_code=status.HTTP_200_OK,
     summary="Register New Devotee Account",
     description=r"""
 Register a new devotee with simplified signup process.
@@ -382,15 +382,18 @@ async def devotee_signup(
         devotee = await service.create_simple_unverified_devotee(validated_devotee_data)
 
         logger.info(f"Simplified devotee signup successful for email: {email}")
-        return SignupResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Registration successful. Verification email sent. Please check your inbox to verify your email address.",
-            data={
-                "user_id": devotee.id,
-                "email": devotee.email,
-                "email_verified": devotee.email_verified,
-            },
+            content=SignupResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Registration successful. Verification email sent. Please check your inbox to verify your email address.",
+                data={
+                    "user_id": devotee.id,
+                    "email": devotee.email,
+                    "email_verified": devotee.email_verified,
+                },
+            ).model_dump(),
         )
 
     except HTTPException as e:
@@ -409,27 +412,36 @@ async def devotee_signup(
             else:
                 response_data = {"retry_after_seconds": 900}  # 15 minutes for rate limit
 
-        return SignupResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=e.detail if isinstance(e.detail, str) else str(e.detail),
-            data=response_data,
+            content=SignupResponse(
+                success=False,
+                status_code=e.status_code,
+                message=e.detail if isinstance(e.detail, str) else str(e.detail),
+                data=response_data,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during devotee signup: {e!s}")
-        return SignupResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred during registration",
-            data=None,
+            content=SignupResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred during registration",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during devotee signup: {e!s}")
-        return SignupResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred during registration",
-            data=None,
+            content=SignupResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="An unexpected error occurred during registration",
+                data=None,
+            ).model_dump(),
         )
 
 
@@ -917,38 +929,63 @@ async def complete_devotee_profile(
             logger.info(
                 f"Profile completed successfully for user {user_id} with {files_count} file(s)"
             )
-            return {
-                "success": True,
-                "status_code": 200,
-                "message": f"Profile completed successfully. {files_count} file(s) uploaded.",
-                "data": None,
-            }
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "success": True,
+                    "status_code": 200,
+                    "message": f"Profile completed successfully. {files_count} file(s) uploaded.",
+                    "data": None,
+                },
+            )
         logger.warning(f"Failed to complete profile for user {user_id}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to complete profile. Please check your data and try again.",
+            content={
+                "success": False,
+                "status_code": 400,
+                "message": "Failed to complete profile. Please check your data and try again.",
+                "data": None,
+            },
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail if isinstance(e.detail, str) else str(e.detail),
+                "data": None,
+            },
+        )
     except SQLAlchemyError as e:
         logger.error(f"Database error during profile completion: {e!s}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred during profile completion",
-        ) from None
+            content={
+                "success": False,
+                "status_code": 500,
+                "message": "Database error occurred during profile completion",
+                "data": None,
+            },
+        )
     except Exception as e:
         logger.error(f"Unexpected error during profile completion: {e!s}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during profile completion",
-        ) from None
+            content={
+                "success": False,
+                "status_code": 500,
+                "message": "An unexpected error occurred during profile completion",
+                "data": None,
+            },
+        )
 
 
 @router.post(
     "/login",
     response_model=LoginResponse,
-    status_code=status.HTTP_200_OK,
     summary="Login to Devotee Account",
     description="""
 Login with email and password to receive authentication token.
@@ -1088,6 +1125,9 @@ async def devotee_login(
     Returns JWT access token for authenticated devotee.
     Devotee must have verified email to login.
     """
+    # Initialize email variable for exception handling
+    email = login_data.email
+
     try:
         # Validate and sanitize email
         email = input_validator.validate_email(login_data.email)
@@ -1102,11 +1142,14 @@ async def devotee_login(
         if not devotee:
             # Use generic error message to prevent email enumeration
             logger.warning(f"Failed login attempt for email: {email}")
-            return LoginResponse(
-                success=False,
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                message="Invalid credentials",
-                data=None,
+                content=LoginResponse(
+                    success=False,
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    message="Invalid credentials",
+                    data=None,
+                ).model_dump(),
             )
 
         # Clear rate limiting on successful login
@@ -1124,17 +1167,20 @@ async def devotee_login(
         expires_in_seconds = settings.jwt_access_token_expire_minutes * 60
 
         logger.info(f"Devotee login successful for email: {email}")
-        return LoginResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Login successful",
-            data={
-                "user_id": devotee.id,
-                "email": devotee.email,
-                "access_token": access_token,
-                "token_type": "bearer",
-                "expires_in": expires_in_seconds,
-            },
+            content=LoginResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Login successful",
+                data={
+                    "user_id": devotee.id,
+                    "email": devotee.email,
+                    "access_token": access_token,
+                    "token_type": "bearer",
+                    "expires_in": expires_in_seconds,
+                },
+            ).model_dump(),
         )
 
     except HTTPException as e:
@@ -1155,34 +1201,42 @@ async def devotee_login(
         if "Email must be verified" in message:
             message = "Email must be verified before login. Please check your inbox for verification link."
 
-        return LoginResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=message,
-            data=response_data,
+            content=LoginResponse(
+                success=False,
+                status_code=e.status_code,
+                message=message,
+                data=response_data,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during devotee login: {e!s}")
-        return LoginResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred during login",
-            data=None,
+            content=LoginResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred during login",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during devotee login: {e!s}")
-        return LoginResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred during login",
-            data=None,
+            content=LoginResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="An unexpected error occurred during login",
+                data=None,
+            ).model_dump(),
         )
 
 
 @router.post(
     "/verify-email",
     response_model=EmailVerificationResponse,
-    status_code=status.HTTP_200_OK,
     summary="Verify Email Address",
     description="""
 Verify devotee's email address using the verification token sent via email.
@@ -1401,58 +1455,72 @@ async def verify_devotee_email(
         # Validate token format to prevent injection attacks
         if not token_manager.validate_token_format(request.token):
             logger.warning("Token format validation failed")
-            return EmailVerificationResponse(
-                success=False,
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid verification token format",
-                data=None,
+                content=EmailVerificationResponse(
+                    success=False,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    message="Invalid verification token format",
+                    data=None,
+                ).model_dump(),
             )
 
         service = DevoteeService(db)
         verified_email = await service.verify_devotee_email(request.token)
 
         logger.info(f"Email verification successful for: {verified_email}")
-        return EmailVerificationResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Email verified successfully. You can now login to your account.",
-            data={
-                "email": verified_email,
-                "email_verified": True,
-            },
+            content=EmailVerificationResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Email verified successfully. You can now login to your account.",
+                data={
+                    "email": verified_email,
+                    "email_verified": True,
+                },
+            ).model_dump(),
         )
 
     except HTTPException as e:
         # Convert HTTPException to standardized response
         logger.warning(f"Email verification failed: {e.detail}")
-        return EmailVerificationResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=e.detail if isinstance(e.detail, str) else str(e.detail),
-            data=None,
+            content=EmailVerificationResponse(
+                success=False,
+                status_code=e.status_code,
+                message=e.detail if isinstance(e.detail, str) else str(e.detail),
+                data=None,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during email verification: {e!s}")
-        return EmailVerificationResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred during email verification",
-            data=None,
+            content=EmailVerificationResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred during email verification",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during email verification: {e!s}")
-        return EmailVerificationResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred during email verification",
-            data=None,
+            content=EmailVerificationResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="An unexpected error occurred during email verification",
+                data=None,
+            ).model_dump(),
         )
 
 
 @router.post(
     "/resend-verification",
     response_model=ResendVerificationResponse,
-    status_code=status.HTTP_200_OK,
     summary="Resend Verification Email",
     description="""
 Resend email verification link to a devotee.
@@ -1580,52 +1648,66 @@ async def resend_devotee_verification(
         success = await service.resend_verification_email(email)
 
         if not success:
-            return ResendVerificationResponse(
-                success=False,
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Failed to resend verification email",
-                data=None,
+                content=ResendVerificationResponse(
+                    success=False,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    message="Failed to resend verification email",
+                    data=None,
+                ).model_dump(),
             )
 
         logger.info(f"Verification email resent to: {email}")
-        return ResendVerificationResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Verification email sent. Please check your inbox and spam folder.",
-            data={"email": email},
+            content=ResendVerificationResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Verification email sent. Please check your inbox and spam folder.",
+                data={"email": email},
+            ).model_dump(),
         )
 
     except HTTPException as e:
         # Convert HTTPException to standardized response
         logger.warning(f"Resend verification failed: {e.detail}")
-        return ResendVerificationResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=e.detail if isinstance(e.detail, str) else str(e.detail),
-            data=None,
+            content=ResendVerificationResponse(
+                success=False,
+                status_code=e.status_code,
+                message=e.detail if isinstance(e.detail, str) else str(e.detail),
+                data=None,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during resend verification: {e!s}")
-        return ResendVerificationResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred while resending verification email",
-            data=None,
+            content=ResendVerificationResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred while resending verification email",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during resend verification: {e!s}")
-        return ResendVerificationResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred while resending verification email",
-            data=None,
+            content=ResendVerificationResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="An unexpected error occurred while resending verification email",
+                data=None,
+            ).model_dump(),
         )
 
 
 @router.post(
     "/forgot-password",
     response_model=ForgotPasswordResponse,
-    status_code=status.HTTP_200_OK,
     summary="Request Password Reset",
     description="""
 Request a password reset link via email.
@@ -1825,11 +1907,14 @@ async def devotee_forgot_password(
         await service.send_password_reset_email(email)
 
         logger.info("Password reset email process completed")
-        return ForgotPasswordResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Password reset email sent successfully",
-            data={"email": email},
+            content=ForgotPasswordResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Password reset email sent successfully",
+                data={"email": email},
+            ).model_dump(),
         )
 
     except HTTPException as e:
@@ -1842,36 +1927,44 @@ async def devotee_forgot_password(
         if e.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
             response_data = {"retry_after_seconds": 900}
 
-        return ForgotPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=e.detail if isinstance(e.detail, str) else str(e.detail),
-            data=response_data,
+            content=ForgotPasswordResponse(
+                success=False,
+                status_code=e.status_code,
+                message=e.detail if isinstance(e.detail, str) else str(e.detail),
+                data=response_data,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during forgot password: {type(e).__name__}: {e!s}")
         logger.exception("Full database error traceback:")
-        return ForgotPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred while processing password reset",
-            data=None,
+            content=ForgotPasswordResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred while processing password reset",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during forgot password: {type(e).__name__}: {e!s}")
         logger.exception("Full error traceback:")
-        return ForgotPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message=f"An unexpected error occurred: {type(e).__name__}. Please try again or contact support.",
-            data=None,
+            content=ForgotPasswordResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message=f"An unexpected error occurred: {type(e).__name__}. Please try again or contact support.",
+                data=None,
+            ).model_dump(),
         )
 
 
 @router.post(
     "/reset-password",
     response_model=ResetPasswordResponse,
-    status_code=status.HTTP_200_OK,
     summary="Reset Password with Token",
     description="""
 Reset devotee's password using the reset token from email.
@@ -2100,11 +2193,14 @@ async def devotee_reset_password(
     try:
         # Validate token format
         if not token_manager.validate_token_format(request.token):
-            return ResetPasswordResponse(
-                success=False,
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid reset token format",
-                data=None,
+                content=ResetPasswordResponse(
+                    success=False,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    message="Invalid reset token format",
+                    data=None,
+                ).model_dump(),
             )
 
         # Validate new password strength
@@ -2114,53 +2210,67 @@ async def devotee_reset_password(
         success = service.reset_password_with_token(request.token, new_password)
 
         if not success:
-            return ResetPasswordResponse(
-                success=False,
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid reset token",
-                data=None,
+                content=ResetPasswordResponse(
+                    success=False,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    message="Invalid reset token",
+                    data=None,
+                ).model_dump(),
             )
 
         # Get devotee email for response (token is now cleared)
         logger.info("Password reset successful")
-        return ResetPasswordResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Password reset successful. You can now login with your new password.",
-            data=None,  # Don't expose email for security
+            content=ResetPasswordResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Password reset successful. You can now login with your new password.",
+                data=None,  # Don't expose email for security
+            ).model_dump(),
         )
 
     except HTTPException as e:
         # Convert HTTPException to standardized response
         logger.warning(f"Password reset failed: {e.detail}")
-        return ResetPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=e.detail if isinstance(e.detail, str) else str(e.detail),
-            data=None,
+            content=ResetPasswordResponse(
+                success=False,
+                status_code=e.status_code,
+                message=e.detail if isinstance(e.detail, str) else str(e.detail),
+                data=None,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during password reset: {e!s}")
-        return ResetPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred during password reset",
-            data=None,
+            content=ResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred during password reset",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during password reset: {e!s}")
-        return ResetPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred during password reset",
-            data=None,
+            content=ResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="An unexpected error occurred during password reset",
+                data=None,
+            ).model_dump(),
         )
 
 
 @router.post(
     "/admin/reset-password",
     response_model=AdminResetPasswordResponse,
-    status_code=status.HTTP_200_OK,
     summary="Admin Reset Devotee Password",
     description="""
 Reset any devotee's password (admin only).
@@ -2372,48 +2482,63 @@ async def admin_reset_devotee_password(
         success = service.admin_reset_password(request.devotee_id, new_password, admin.id)
 
         if not success:
-            return AdminResetPasswordResponse(
-                success=False,
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Admin password reset failed",
-                data=None,
+                content=AdminResetPasswordResponse(
+                    success=False,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    message="Admin password reset failed",
+                    data=None,
+                ).model_dump(),
             )
 
         logger.info(
             f"Admin {admin.id} ({admin.email}) reset password for devotee {request.devotee_id}"
         )
-        return AdminResetPasswordResponse(
-            success=True,
+        return JSONResponse(
             status_code=status.HTTP_200_OK,
-            message="Password reset successful by admin",
-            data={
-                "devotee_id": request.devotee_id,
-                "admin_id": admin.id,
-            },
+            content=AdminResetPasswordResponse(
+                success=True,
+                status_code=status.HTTP_200_OK,
+                message="Password reset successful by admin",
+                data={
+                    "devotee_id": request.devotee_id,
+                    "admin_id": admin.id,
+                },
+            ).model_dump(),
         )
 
     except HTTPException as e:
         # Convert HTTPException to standardized response
         logger.warning(f"Admin password reset failed: {e.detail}")
-        return AdminResetPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=e.status_code,
-            message=e.detail if isinstance(e.detail, str) else str(e.detail),
-            data=None,
+            content=AdminResetPasswordResponse(
+                success=False,
+                status_code=e.status_code,
+                message=e.detail if isinstance(e.detail, str) else str(e.detail),
+                data=None,
+            ).model_dump(),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error during admin password reset: {e!s}")
-        return AdminResetPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Database error occurred during admin password reset",
-            data=None,
+            content=AdminResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Database error occurred during admin password reset",
+                data=None,
+            ).model_dump(),
         )
     except Exception as e:
         logger.error(f"Unexpected error during admin password reset: {e!s}")
-        return AdminResetPasswordResponse(
-            success=False,
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="An unexpected error occurred during admin password reset",
-            data=None,
+            content=AdminResetPasswordResponse(
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="An unexpected error occurred during admin password reset",
+                data=None,
+            ).model_dump(),
         )
