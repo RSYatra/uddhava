@@ -1,0 +1,44 @@
+# Cloud Build configuration for automatic deployment to Cloud Run
+# This file is triggered automatically when you push to the main branch
+
+steps:
+  # Build the container image using Buildpacks (auto-detects Python)
+  - name: 'gcr.io/k8s-skaffold/pack'
+    args:
+      - build
+      - 'gcr.io/$PROJECT_ID/uddhava:$COMMIT_SHA'
+      - '--builder=gcr.io/buildpacks/builder:latest'
+      - '--path=.'
+    id: 'build-image'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'uddhava'
+      - '--image=gcr.io/$PROJECT_ID/uddhava:$COMMIT_SHA'
+      - '--region=us-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--min-instances=0'
+      - '--max-instances=10'
+      - '--timeout=300'
+      - '--concurrency=80'
+      - '--set-env-vars=DATABASE_URL=mysql+pymysql://u122780635_fdbk:Testing%40DB123@153.92.15.57:3306/u122780635_fdbk,JWT_SECRET_KEY=772b9f6bd1b54201b0ed9674f4261c976ce2a6b7472931079a4f9ef95bb41347,ENVIRONMENT=production,FRONTEND_LOGIN_URL=https://rsyatra.com/login,PASSWORD_RESET_URL_BASE=https://rsyatra.com/reset-password,EMAIL_VERIFICATION_URL_BASE=https://rsyatra.com/verify-email,GMAIL_CREDENTIALS_FILE=token.json,ALLOWED_ORIGINS=["https://rsyatra.com","https://www.rsyatra.com"]'
+    id: 'deploy-cloud-run'
+
+# Store the built image in Google Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/uddhava:$COMMIT_SHA'
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout for the entire build
+timeout: '1200s'
