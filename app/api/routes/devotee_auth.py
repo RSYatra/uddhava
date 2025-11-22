@@ -1164,7 +1164,12 @@ async def devotee_login(
             }
         )
 
-        expires_in_seconds = settings.jwt_access_token_expire_minutes * 60
+        # Calculate expires_in (None if token never expires)
+        expires_in_seconds = (
+            settings.jwt_access_token_expire_minutes * 60
+            if settings.jwt_access_token_expire_minutes is not None
+            else None
+        )
 
         logger.info(f"Devotee login successful for email: {email}")
         return JSONResponse(

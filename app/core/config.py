@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     workers: int = 1
 
     # Database
+    database_url: str | None = None  # Full database URL (takes precedence if set)
     db_host: str = "localhost"
     db_port: int = 3306
     db_user: str = "root"
@@ -52,7 +53,15 @@ class Settings(BaseSettings):
     # JWT Authentication
     jwt_secret_key: str = "your-secret-key-change-this-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 30
+    jwt_access_token_expire_minutes: int | None = None  # None = no expiration (token never expires)
+
+    @field_validator("jwt_access_token_expire_minutes", mode="before")
+    @classmethod
+    def validate_jwt_expiration(cls, v):
+        """Convert empty string to None for no expiration."""
+        if v == "" or v is None:
+            return None
+        return int(v)
 
     # File Upload Configuration
     max_upload_size_mb: int = 20  # Total size limit per user
@@ -126,10 +135,18 @@ class Settings(BaseSettings):
             raise ValueError(f"Environment must be one of: {valid_envs}")
         return v.lower()
 
-    @property
-    def database_url(self) -> str:
-        """Construct database URL with proper URL encoding for special characters."""
-        # URL encode the password to handle special characters like @
+    def get_database_url(self) -> str:
+        """
+        Get database URL, either from DATABASE_URL env var or construct from components.
+
+        Priority:
+        1. DATABASE_URL environment variable (if set)
+        2. Constructed from db_host, db_port, db_user, db_password, db_name
+        """
+        if self.database_url:
+            return self.database_url
+
+        # Fallback: construct from individual components
         encoded_pwd = quote_plus(self.db_password)  # Not a hardcoded password
         encoded_user = quote_plus(self.db_user)
 
