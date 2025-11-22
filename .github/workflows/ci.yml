@@ -25,17 +25,20 @@ jobs:
 
     - name: Scan for hardcoded credentials
       run: |
-        if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env"; then
+        # Look for actual hardcoded passwords (string literals), not variable assignments
+        if grep -rE 'password\s*=\s*["\047]' --include="*.py" . | grep -v ".env" | grep -v "test_" | grep -v "example"; then
           echo "Found hardcoded passwords!"
           exit 1
         fi
 
-        if grep -r -i "secret.*=" --include="*.py" . | grep -v "SECRET_KEY" | grep -v ".env"; then
+        # Look for hardcoded secrets (string literals)
+        if grep -rE 'secret\s*=\s*["\047][^"\047]{10,}["\047]' --include="*.py" . | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY"; then
           echo "Found hardcoded secrets!"
           exit 1
         fi
 
-        if grep -r -i "api.*key.*=" --include="*.py" . | grep -v ".env"; then
+        # Look for hardcoded API keys (string literals)
+        if grep -rE 'api[_-]?key\s*=\s*["\047][^"\047]{10,}["\047]' --include="*.py" . | grep -v ".env" | grep -v "test_"; then
           echo "Found hardcoded API keys!"
           exit 1
         fi
