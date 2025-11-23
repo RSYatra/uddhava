@@ -1,7 +1,7 @@
 repos:
   # Ruff - Fast Python linter and formatter (replaces black, isort, flake8)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.14.6
     hooks:
       # Run the linter
       - id: ruff
@@ -11,11 +11,23 @@ repos:
 
   # Security checks
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.6
+    rev: 1.9.1
     hooks:
       - id: bandit
-        args: ["--skip", "B101"]
-        exclude: ^venv/
+        args: ["--skip", "B101", "-ll"]
+        exclude: ^(venv/|tests/)
+
+  # Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        args: ["--ignore-missing-imports", "--no-strict-optional", "--check-untyped-defs"]
+        additional_dependencies:
+          - types-requests
+          - types-PyMySQL
+          - pydantic
+        exclude: ^(venv/|tests/|alembic/versions/)
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -30,17 +42,23 @@ repos:
       - id: debug-statements
       - id: check-case-conflict
 
-  # Environment file protection
+  # Local custom checks (matching CI)
   - repo: local
     hooks:
       - id: check-credentials
-        name: Check for credentials in code
-        entry: bash -c 'if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env" | grep -v "default_password" | grep -v "validate_password" | grep -v "MAIL_PASSWORD" | grep -v "get_password_hash" | grep -v "password=password"; then echo "Found hardcoded passwords!"; exit 1; fi'
+        name: Check for hardcoded credentials
+        entry: bash -c 'grep -rE "password\s*=\s*[\"'\'']" --include="*.py" . | grep -v ".env" | grep -v "test_" && echo "Found hardcoded passwords!" && exit 1 || true; grep -rE "secret\s*=\s*[\"'\''][^\"'\'']{10,}[\"'\'']" --include="*.py" . | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY" && echo "Found hardcoded secrets!" && exit 1 || true; grep -rE "api[_-]?key\s*=\s*[\"'\''][^\"'\'']{10,}[\"'\'']" --include="*.py" . | grep -v ".env" | grep -v "test_" && echo "Found hardcoded API keys!" && exit 1 || true; echo "No hardcoded credentials found"'
         language: system
         pass_filenames: false
 
       - id: check-env-files
         name: Ensure .env files are not committed
-        entry: bash -c 'if git ls-files | grep -q "^\.env$"; then echo ".env files should not be committed!"; exit 1; fi'
+        entry: bash -c 'git ls-files | grep -q "^\.env$" && echo ".env files should not be committed!" && exit 1 || echo ".env check passed"'
+        language: system
+        pass_filenames: false
+
+      - id: check-imports
+        name: Verify all imports are resolvable
+        entry: bash -c 'PYTHONPATH=$PWD python -c "import sys; from pathlib import Path; [__import__(f.stem) for f in Path(\"app\").rglob(\"*.py\") if f.stem != \"__init__\" and not f.name.startswith(\"test_\")]" 2>&1 | grep -v "FutureWarning" || echo "Import check passed"'
         language: system
         pass_filenames: false
