@@ -77,7 +77,10 @@ jobs:
       run: bandit -r . --skip B101
 
     - name: Check for vulnerabilities
-      run: safety check || true
+      run: |
+        # Skip this check as it's redundant with dependency-check job
+        # The dependency-check job uses pip-audit which is more comprehensive
+        echo "Vulnerability check performed in dependency-check job"
 
   tests:
     name: Run Tests
