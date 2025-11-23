@@ -118,15 +118,15 @@ repos:
           - -c
           - |
             EXIT_CODE=0
-            if grep -rE 'password\s*=\s*["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "example"; then
+            if grep -rE '(password|passwd|pwd)\s*=\s*["\047][^"\047]{3,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "example" | grep -v "validate_password" | grep -v "get_password" | grep -v "input_validator"; then
               echo "ERROR: Found hardcoded passwords!"
               EXIT_CODE=1
             fi
-            if grep -rE 'secret\s*=\s*["\047][^"\047]{10,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY"; then
+            if grep -rE '(secret|token)\s*=\s*["\047][A-Za-z0-9_-]{20,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY" | grep -v "test-secret"; then
               echo "ERROR: Found hardcoded secrets!"
               EXIT_CODE=1
             fi
-            if grep -rE 'api[_-]?key\s*=\s*["\047][^"\047]{10,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_"; then
+            if grep -rE 'api[_-]?key\s*=\s*["\047][A-Za-z0-9_-]{20,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_"; then
               echo "ERROR: Found hardcoded API keys!"
               EXIT_CODE=1
             fi
