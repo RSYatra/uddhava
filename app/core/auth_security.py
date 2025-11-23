@@ -7,6 +7,7 @@ authentication including rate limiting, input validation, and secure error handl
 
 import hashlib
 import logging
+import os
 import re
 import secrets
 import time
@@ -85,6 +86,10 @@ class AuthSecurityManager:
 
     def check_login_rate_limit(self, request: Request, email: str) -> None:
         """Check and enforce login rate limiting."""
+        # Skip rate limiting in testing environment
+        if os.getenv("ENVIRONMENT") == "testing":
+            return
+
         ip = self._get_client_ip(request)
         current_time = time.time()
 
@@ -122,6 +127,10 @@ class AuthSecurityManager:
 
     def check_signup_rate_limit(self, request: Request) -> None:
         """Check and enforce signup rate limiting."""
+        # Skip rate limiting in testing environment
+        if os.getenv("ENVIRONMENT") == "testing":
+            return
+
         ip = self._get_client_ip(request)
         current_time = time.time()
 

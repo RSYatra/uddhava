@@ -3,42 +3,7 @@
 # Update hooks: pre-commit autoupdate
 
 repos:
-  # Ruff - All-in-one linter and formatter (replaces black, isort, flake8, pyupgrade)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.6
-    hooks:
-      - id: ruff
-        name: Ruff linter
-        args: [--fix, --exit-non-zero-on-fix]
-        exclude: ^(venv/|alembic/versions/)
-      - id: ruff-format
-        name: Ruff formatter
-        exclude: ^(venv/|alembic/versions/)
-
-  # Type checking with mypy (gradual adoption, non-blocking for now)
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.2
-    hooks:
-      - id: mypy
-        name: Type checking
-        args: [--config-file=pyproject.toml]
-        additional_dependencies:
-          - types-requests
-          - types-PyMySQL
-          - pydantic
-          - sqlalchemy
-        exclude: ^(venv/|tests/|alembic/versions/)
-
-  # Security scanning with bandit
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.9.1
-    hooks:
-      - id: bandit
-        name: Security analysis
-        args: [-c, pyproject.toml, -ll, -r, .]
-        exclude: ^(venv/|tests/)
-
-  # Standard file checks
+  # Standard file checks (fast - run first)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -64,6 +29,84 @@ repos:
       - id: mixed-line-ending
         name: Check line endings
         args: [--fix=lf]
+
+  # Dependency validation (medium - run before code changes)
+  - repo: local
+    hooks:
+      - id: validate-dependencies
+        name: Validate requirements.txt compatibility
+        entry: bash
+        args:
+          - -c
+          - |
+            echo "Validating dependency compatibility..."
+            if ! ./venv/bin/pip install --dry-run -r requirements.txt 2>&1 | tee /tmp/pip-check.log; then
+              echo "ERROR: Dependency conflicts detected!"
+              grep -E "(ERROR|conflict)" /tmp/pip-check.log
+              exit 1
+            fi
+            echo "All dependencies compatible"
+        language: system
+        pass_filenames: false
+        files: requirements\.txt$
+
+  # Ruff - All-in-one linter and formatter (replaces black, isort, flake8, pyupgrade)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff
+        name: Ruff linter
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: ^(venv/|alembic/versions/)
+      - id: ruff-format
+        name: Ruff formatter
+        exclude: ^(venv/|alembic/versions/)
+
+  # Test execution (run after formatting/linting)
+  - repo: local
+    hooks:
+      - id: run-tests
+        name: Run test suite
+        entry: bash
+        args:
+          - -c
+          - |
+            export PYTHONPATH=$PWD
+            export DATABASE_URL=sqlite:///./test.db
+            export JWT_SECRET_KEY=test-secret-key
+            export ENVIRONMENT=testing
+            echo "Running tests..."
+            if ! ./venv/bin/pytest -v --tb=short 2>&1; then
+              echo "ERROR: Tests failed!"
+              exit 1
+            fi
+            echo "All tests passed"
+        language: system
+        pass_filenames: false
+        files: \.(py|txt)$
+
+  # Type checking with mypy (gradual adoption, non-blocking for now)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        name: Type checking
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - types-requests
+          - types-PyMySQL
+          - pydantic
+          - sqlalchemy
+        exclude: ^(venv/|tests/|alembic/)
+
+  # Security scanning with bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.1
+    hooks:
+      - id: bandit
+        name: Security analysis
+        args: [-c, pyproject.toml, -ll, -r, .]
+        exclude: ^(venv/|tests/)
 
   # Custom security checks (matching CI exactly)
   - repo: local

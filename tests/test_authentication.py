@@ -34,6 +34,16 @@ app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def clean_database():
+    """Clean database before each test."""
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+    # Cleanup after test
+    Base.metadata.drop_all(bind=engine)
+
+
 class TestAuthentication:
     """Test suite for authentication endpoints."""
 
@@ -50,21 +60,31 @@ class TestAuthentication:
         assert response.status_code == 200
         data = response.json()
         assert "message" in data
-        assert "email" in data
-        assert data["email"] == "unique_test_user@example.com"
+        assert "data" in data
+        assert data["data"]["email"] == "unique_test_user@example.com"
 
     def test_signup_duplicate_email(self):
         """Test signup with duplicate email returns error."""
+        # First, create a user
+        first_signup = {
+            "legal_name": "Test User",
+            "email": "duplicate_test@example.com",
+            "password": "SecurePassword123!",
+        }
+        client.post("/api/v1/auth/signup", json=first_signup)
+
+        # Now try to signup with the same email
         signup_data = {
             "legal_name": "Test User 2",
-            "email": "unique_test_user@example.com",  # Same email as above
+            "email": "duplicate_test@example.com",  # Same email as above
             "password": "AnotherPassword123!",
         }
 
         response = client.post("/api/v1/auth/signup", json=signup_data)
 
         assert response.status_code == 409  # Conflict - duplicate email
-        assert "Devotee exists but is not verified" in response.json()["detail"]
+        data = response.json()
+        assert "Devotee exists but is not verified" in data["message"]
 
     def test_signup_invalid_email(self):
         """Test signup with invalid email format."""
@@ -94,12 +114,18 @@ class TestAuthentication:
 
     def test_login_success(self):
         """Test successful login."""
-        # First, manually verify the devotee for testing
+        # First, create and verify a user
+        signup_data = {
+            "legal_name": "Login Test User",
+            "email": "login_test@example.com",
+            "password": "SecurePassword123!",
+        }
+        client.post("/api/v1/auth/signup", json=signup_data)
+
+        # Manually verify the devotee for testing
         db = TestingSessionLocal()
         try:
-            devotee = (
-                db.query(Devotee).filter(Devotee.email == "unique_test_user@example.com").first()
-            )
+            devotee = db.query(Devotee).filter(Devotee.email == "login_test@example.com").first()
             if devotee:
                 devotee.email_verified = True
                 db.commit()
@@ -107,25 +133,28 @@ class TestAuthentication:
             db.close()
 
         login_data = {
-            "email": "unique_test_user@example.com",
+            "email": "login_test@example.com",
             "password": "SecurePassword123!",
         }
 
-        response = client.post("/api/v1/auth/login", data=login_data)
+        response = client.post("/api/v1/auth/login", json=login_data)
 
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        assert data["success"] is True
+        assert "data" in data
+        assert "access_token" in data["data"]
+        assert data["data"]["token_type"] == "bearer"
 
     def test_login_wrong_password(self):
         """Test login with wrong password."""
         login_data = {"email": "test@example.com", "password": "wrongpassword"}
 
-        response = client.post("/api/v1/auth/login", data=login_data)
+        response = client.post("/api/v1/auth/login", json=login_data)
 
         assert response.status_code == 401
-        assert "Invalid credentials" in response.json()["detail"]
+        data = response.json()
+        assert "Invalid credentials" in data["message"]
 
     def test_login_nonexistent_user(self):
         """Test login with nonexistent user."""
@@ -134,10 +163,11 @@ class TestAuthentication:
             "password": "somepassword",
         }
 
-        response = client.post("/api/v1/auth/login", data=login_data)
+        response = client.post("/api/v1/auth/login", json=login_data)
 
         assert response.status_code == 401
-        assert "Invalid credentials" in response.json()["detail"]
+        data = response.json()
+        assert "Invalid credentials" in data["message"]
 
     def test_protected_endpoint_without_token(self):
         """Test accessing protected endpoint without token."""
@@ -147,11 +177,19 @@ class TestAuthentication:
 
     def test_protected_endpoint_with_valid_token(self):
         """Test accessing protected endpoint with valid token."""
-        # First, manually verify the devotee for testing
+        # First, create and verify a user
+        signup_data = {
+            "legal_name": "Protected Test User",
+            "email": "protected_test@example.com",
+            "password": "SecurePassword123!",
+        }
+        client.post("/api/v1/auth/signup", json=signup_data)
+
+        # Manually verify the devotee for testing
         db = TestingSessionLocal()
         try:
             devotee = (
-                db.query(Devotee).filter(Devotee.email == "unique_test_user@example.com").first()
+                db.query(Devotee).filter(Devotee.email == "protected_test@example.com").first()
             )
             if devotee:
                 devotee.email_verified = True
@@ -161,13 +199,13 @@ class TestAuthentication:
 
         # First login to get a token
         login_data = {
-            "email": "unique_test_user@example.com",
+            "email": "protected_test@example.com",
             "password": "SecurePassword123!",
         }
 
-        login_response = client.post("/api/v1/auth/login", data=login_data)
+        login_response = client.post("/api/v1/auth/login", json=login_data)
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
-        token = login_response.json()["access_token"]
+        token = login_response.json()["data"]["access_token"]
 
         # Use token to access protected endpoint - need admin for devotees list
         headers = {"Authorization": f"Bearer {token}"}
