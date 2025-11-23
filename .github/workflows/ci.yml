@@ -104,9 +104,12 @@ jobs:
 
       - name: Check dependency vulnerabilities
         run: |
-          # Ignore ecdsa vulnerability (no fix available, project considers side-channel attacks out of scope)
-          # Ignore pip vulnerability (CI environment, not application dependency)
-          pip-audit --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln GHSA-4xh5-x5gv-qwph
+          # Ignore ecdsa vulnerability GHSA-wj6h-64fc-37mp:
+          # - No fix available (maintainers consider side-channel attacks out of scope)
+          # - We use HS256 (HMAC), NOT ECDSA algorithms (ES256/ES384/ES512)
+          # - Vulnerability only affects ECDSA signing operations (P-256 curve timing attack)
+          # - Our JWT implementation is not vulnerable
+          pip-audit --ignore-vuln GHSA-wj6h-64fc-37mp
 
   # Job 3: Tests (Unit, Integration, Coverage)
   tests:
