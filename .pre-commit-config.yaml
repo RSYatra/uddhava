@@ -27,7 +27,7 @@ repos:
           - types-PyMySQL
           - pydantic
           - sqlalchemy
-        exclude: ^(venv/|tests/|alembic/versions/|app/)
+        exclude: ^(venv/|tests/|alembic/versions/)
 
   # Security scanning with bandit
   - repo: https://github.com/PyCQA/bandit
