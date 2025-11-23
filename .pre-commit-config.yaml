@@ -1,64 +1,126 @@
+# Pre-commit hooks to ensure code quality before commits
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+
 repos:
-  # Ruff - Fast Python linter and formatter (replaces black, isort, flake8)
+  # Ruff - All-in-one linter and formatter (replaces black, isort, flake8, pyupgrade)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.6
     hooks:
-      # Run the linter
       - id: ruff
-        args: ["--fix"]
-      # Run the formatter
+        name: Ruff linter
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: ^(venv/|alembic/versions/)
       - id: ruff-format
+        name: Ruff formatter
+        exclude: ^(venv/|alembic/versions/)
 
-  # Security checks
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.9.1
-    hooks:
-      - id: bandit
-        args: ["--skip", "B101", "-ll"]
-        exclude: ^(venv/|tests/)
-
-  # Type checking
+  # Type checking with mypy
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:
       - id: mypy
-        args: ["--ignore-missing-imports", "--no-strict-optional", "--check-untyped-defs"]
+        name: Type checking
+        args: [--config-file=pyproject.toml]
         additional_dependencies:
           - types-requests
           - types-PyMySQL
           - pydantic
+          - sqlalchemy
         exclude: ^(venv/|tests/|alembic/versions/)
 
-  # General file checks
+  # Security scanning with bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.1
+    hooks:
+      - id: bandit
+        name: Security analysis
+        args: [-c, pyproject.toml, -ll, -r, .]
+        exclude: ^(venv/|tests/)
+
+  # Standard file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        name: Trim trailing whitespace
       - id: end-of-file-fixer
+        name: Fix end of files
       - id: check-yaml
+        name: Validate YAML
+      - id: check-toml
+        name: Validate TOML
+      - id: check-json
+        name: Validate JSON
       - id: check-added-large-files
-        args: ['--maxkb=500']
+        name: Check file size
+        args: [--maxkb=500]
       - id: check-merge-conflict
-      - id: debug-statements
+        name: Check merge conflicts
       - id: check-case-conflict
+        name: Check case conflicts
+      - id: debug-statements
+        name: Check debug statements
+      - id: mixed-line-ending
+        name: Check line endings
+        args: [--fix=lf]
 
-  # Local custom checks (matching CI)
+  # Custom security checks (matching CI exactly)
   - repo: local
     hooks:
-      - id: check-credentials
-        name: Check for hardcoded credentials
-        entry: bash -c 'grep -rE "password\s*=\s*[\"'\'']" --include="*.py" . | grep -v ".env" | grep -v "test_" && echo "Found hardcoded passwords!" && exit 1 || true; grep -rE "secret\s*=\s*[\"'\''][^\"'\'']{10,}[\"'\'']" --include="*.py" . | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY" && echo "Found hardcoded secrets!" && exit 1 || true; grep -rE "api[_-]?key\s*=\s*[\"'\''][^\"'\'']{10,}[\"'\'']" --include="*.py" . | grep -v ".env" | grep -v "test_" && echo "Found hardcoded API keys!" && exit 1 || true; echo "No hardcoded credentials found"'
+      - id: check-hardcoded-credentials
+        name: Scan for hardcoded credentials
+        entry: bash
+        args:
+          - -c
+          - |
+            EXIT_CODE=0
+            if grep -rE 'password\s*=\s*["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "example"; then
+              echo "ERROR: Found hardcoded passwords!"
+              EXIT_CODE=1
+            fi
+            if grep -rE 'secret\s*=\s*["\047][^"\047]{10,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY"; then
+              echo "ERROR: Found hardcoded secrets!"
+              EXIT_CODE=1
+            fi
+            if grep -rE 'api[_-]?key\s*=\s*["\047][^"\047]{10,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_"; then
+              echo "ERROR: Found hardcoded API keys!"
+              EXIT_CODE=1
+            fi
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "No hardcoded credentials found"
+            fi
+            exit $EXIT_CODE
+        language: system
+        pass_filenames: false
+        files: \.py$
+
+      - id: block-env-files
+        name: Block .env file commits
+        entry: bash
+        args:
+          - -c
+          - |
+            if git ls-files | grep -q "^\.env$"; then
+              echo "ERROR: .env files must not be committed!"
+              exit 1
+            fi
+            echo "No .env files in commit"
         language: system
         pass_filenames: false
 
-      - id: check-env-files
-        name: Ensure .env files are not committed
-        entry: bash -c 'git ls-files | grep -q "^\.env$" && echo ".env files should not be committed!" && exit 1 || echo ".env check passed"'
+      - id: check-python-imports
+        name: Verify Python imports
+        entry: bash
+        args:
+          - -c
+          - |
+            export PYTHONPATH=$PWD
+            if ! python -c "import main; from app.core import config" 2>&1; then
+              echo "ERROR: Critical imports failed!"
+              exit 1
+            fi
+            echo "Python imports valid"
         language: system
         pass_filenames: false
-
-      - id: check-imports
-        name: Verify all imports are resolvable
-        entry: bash -c 'PYTHONPATH=$PWD python -c "import sys; from pathlib import Path; [__import__(f.stem) for f in Path(\"app\").rglob(\"*.py\") if f.stem != \"__init__\" and not f.name.startswith(\"test_\")]" 2>&1 | grep -v "FutureWarning" || echo "Import check passed"'
-        language: system
-        pass_filenames: false
+        files: \.py$

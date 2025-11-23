@@ -1,0 +1,64 @@
+[project]
+name = "uddhava"
+version = "1.0.0"
+description = "FastAPI application for devotee management"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+env = [
+    "PYTHONPATH=.",
+    "DATABASE_URL=sqlite:///./test.db",
+    "JWT_SECRET_KEY=test-secret-key-for-testing",
+    "ENVIRONMENT=test",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "*/alembic/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+no_strict_optional = true
+check_untyped_defs = true
+exclude = [
+    "venv",
+    "alembic/versions",
+    "tests",
+]
+
+[tool.bandit]
+exclude_dirs = ["/venv", "/tests"]
+skips = ["B101"]  # assert_used - okay in tests
