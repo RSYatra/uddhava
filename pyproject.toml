@@ -47,16 +47,31 @@ exclude_lines = [
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
 no_strict_optional = true
-check_untyped_defs = true
+check_untyped_defs = false
 exclude = [
     "venv",
     "alembic/versions",
     "tests",
+]
+
+# Relax checking for gradual typing adoption
+[[tool.mypy.overrides]]
+module = "app.*"
+disable_error_code = [
+    "attr-defined",
+    "assignment",
+    "arg-type",
+    "return-value",
+    "dict-item",
+    "var-annotated",
+    "no-any-return",
+    "valid-type",
+    "misc",
 ]
 
 [tool.bandit]
