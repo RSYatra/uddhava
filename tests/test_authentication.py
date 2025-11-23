@@ -7,12 +7,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Override the database dependency for all route dependencies
-from app.api.routes.devotee_auth import get_db as auth_get_db
-from app.api.routes.devotees import get_db as devotees_get_db
-from app.api.routes.health import get_db as health_get_db
+# Override the database dependency
 from app.db.models import Base, Devotee
-from app.db.session import get_db as session_get_db
+from app.db.session import get_db
 from main import app
 
 # Create test database
@@ -33,10 +30,7 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[auth_get_db] = override_get_db
-app.dependency_overrides[devotees_get_db] = override_get_db
-app.dependency_overrides[health_get_db] = override_get_db
-app.dependency_overrides[session_get_db] = override_get_db
+app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 

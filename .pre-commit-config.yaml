@@ -116,7 +116,7 @@ repos:
           - -c
           - |
             export PYTHONPATH=$PWD
-            if ! python -c "import main; from app.core import config" 2>&1; then
+            if ! ./venv/bin/python -c "import main; from app.core import config" 2>&1; then
               echo "ERROR: Critical imports failed!"
               exit 1
             fi

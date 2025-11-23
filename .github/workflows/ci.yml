@@ -251,8 +251,12 @@ jobs:
           ENVIRONMENT: testing
         run: |
           # Test that migrations can be read and processed
-          alembic check || echo "⚠ Warning: Alembic check reported issues"
-          echo "✓ Migration syntax valid"
+          if alembic check; then
+            echo "✓ Migration syntax valid"
+          else
+            echo "ERROR: Alembic check failed - migrations have issues"
+            exit 1
+          fi
 
   # Job 6: PR Quality Checks (only on pull requests)
   pr-checks:
@@ -288,17 +292,25 @@ jobs:
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [code-quality, security, tests, build, migrations]
+    needs: [code-quality, security, tests, build, migrations, pr-checks]
     if: always()
     steps:
       - name: Check all jobs
         run: |
+          # Check required jobs (always run)
           if [[ "${{ needs.code-quality.result }}" != "success" ]] ||
              [[ "${{ needs.security.result }}" != "success" ]] ||
              [[ "${{ needs.tests.result }}" != "success" ]] ||
              [[ "${{ needs.build.result }}" != "success" ]] ||
              [[ "${{ needs.migrations.result }}" != "success" ]]; then
-            echo "One or more checks failed"
+            echo "ERROR: One or more required checks failed"
             exit 1
           fi
+
+          # Check PR-specific job (only runs on PRs)
+          if [[ "${{ needs.pr-checks.result }}" == "failure" ]]; then
+            echo "ERROR: PR quality checks failed"
+            exit 1
+          fi
+
           echo "All checks passed successfully!"
