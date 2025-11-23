@@ -100,7 +100,7 @@ jobs:
         run: bandit -r . -c pyproject.toml -ll
 
       - name: Check dependency vulnerabilities
-        run: pip-audit --require-hashes --disable-pip
+        run: pip-audit
 
   # Job 3: Tests (Unit, Integration, Coverage)
   tests:
@@ -124,7 +124,7 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./test.db
           JWT_SECRET_KEY: test-secret-key-for-ci
-          ENVIRONMENT: test
+          ENVIRONMENT: testing
         run: pytest
 
       - name: Upload coverage to Codecov
@@ -182,7 +182,7 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./test.db
           JWT_SECRET_KEY: test-secret-key-for-ci
-          ENVIRONMENT: test
+          ENVIRONMENT: testing
         run: |
           timeout 10s python -c "
           from main import app
@@ -248,6 +248,7 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./test_migrations.db
           JWT_SECRET_KEY: test-secret-key-for-ci
+          ENVIRONMENT: testing
         run: |
           # Test that migrations can be read and processed
           alembic check || echo "⚠ Warning: Alembic check reported issues"
