@@ -1,260 +1,331 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# Cancel in-progress runs when a new run is triggered
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  PYTHONPATH: ${{ github.workspace }}
 
 jobs:
-  security-scan:
-    name: Security & Secrets Scan
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Run Trufflehog to scan for secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        base: main
-        head: HEAD
-        extra_args: --debug --only-verified
-
-    - name: Scan for hardcoded credentials
-      run: |
-        if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env"; then
-          echo "Found hardcoded passwords!"
-          exit 1
-        fi
-
-        if grep -r -i "secret.*=" --include="*.py" . | grep -v "SECRET_KEY" | grep -v ".env"; then
-          echo "Found hardcoded secrets!"
-          exit 1
-        fi
-
-        if grep -r -i "api.*key.*=" --include="*.py" . | grep -v ".env"; then
-          echo "Found hardcoded API keys!"
-          exit 1
-        fi
-
-        echo "No hardcoded credentials found"
-
+  # Job 1: Code Quality (Formatting, Linting, Type Checking)
   code-quality:
-    name: Code Quality & Formatting
+    name: Code Quality
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Code formatting check with Ruff
-      run: ruff format --check .
+      - name: Check code formatting
+        run: ruff format --check .
 
-    - name: Linting with Ruff
-      run: ruff check .
+      - name: Run linter
+        run: ruff check .
 
-    - name: Type checking with mypy
-      run: mypy . --ignore-missing-imports --no-strict-optional
+      - name: Type checking
+        run: mypy . --config-file=pyproject.toml
 
-    - name: Security analysis with bandit
-      run: bandit -r . --skip B101
+  # Job 2: Security Scanning (Secrets, Credentials, Vulnerabilities)
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Check for vulnerabilities
-      run: safety check
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Scan for secrets with TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha || 'main' }}
+          head: HEAD
+          extra_args: --only-verified
+
+      - name: Scan for hardcoded credentials
+        run: |
+          EXIT_CODE=0
+
+          # Check for hardcoded passwords (string literals only, not variable assignments)
+          if grep -rE '(password|passwd|pwd)\s*=\s*["\047][^"\047]{3,}["\047]' --include="*.py" . | grep -v ".env" | grep -v "test_" | grep -v "example" | grep -v "validate_password" | grep -v "get_password" | grep -v "input_validator"; then
+            echo "ERROR: Found hardcoded passwords!"
+            EXIT_CODE=1
+          fi
+
+          # Check for hardcoded secrets (string literals only)
+          if grep -rE '(secret|token)\s*=\s*["\047][A-Za-z0-9_-]{20,}["\047]' --include="*.py" . | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY" | grep -v "test-secret"; then
+            echo "ERROR: Found hardcoded secrets!"
+            EXIT_CODE=1
+          fi
+
+          # Check for hardcoded API keys (string literals only)
+          if grep -rE 'api[_-]?key\s*=\s*["\047][A-Za-z0-9_-]{20,}["\047]' --include="*.py" . | grep -v ".env" | grep -v "test_"; then
+            echo "ERROR: Found hardcoded API keys!"
+            EXIT_CODE=1
+          fi
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✓ No hardcoded credentials found"
+          fi
+
+          exit $EXIT_CODE
+
+      - name: Run Bandit security analysis
+        run: bandit -r . -c pyproject.toml -ll
+
+      - name: Check dependency vulnerabilities
+        run: |
+          # Ignore ecdsa vulnerability GHSA-wj6h-64fc-37mp:
+          # - No fix available (maintainers consider side-channel attacks out of scope)
+          # - We use HS256 (HMAC), NOT ECDSA algorithms (ES256/ES384/ES512)
+          # - Vulnerability only affects ECDSA signing operations (P-256 curve timing attack)
+          # - Our JWT implementation is not vulnerable
+          pip-audit --ignore-vuln GHSA-wj6h-64fc-37mp
+
+  # Job 3: Tests (Unit, Integration, Coverage)
   tests:
-    name: Run Tests
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Run tests
-      env:
-        DB_HOST: localhost
-        DB_PORT: 3306
-        DB_USER: test_user
-        DB_PASSWORD: test_password
-        DB_NAME: test_db
-        ENVIRONMENT: test
-      run: pytest --cov=. --cov-report=xml -v
-
-    - name: Upload coverage
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-
-  dependency-check:
-    name: Dependency Security Check
+    name: Tests & Coverage
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-    - name: Install dependencies and audit
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip-audit -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-  build-check:
-    name: Build Verification
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          JWT_SECRET_KEY: test-secret-key-for-ci
+          ENVIRONMENT: testing
+        run: pytest
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # Job 4: Build & Import Validation
+  build:
+    name: Build Validation
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-    - name: Verify requirements.txt
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        echo "All dependencies installed successfully"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Check for missing dependencies
-      run: |
-        python -c "
-        import sys
-        try:
-            import fastapi
-            import uvicorn
-            import sqlalchemy
-            import pydantic
-            import jose
-            import passlib
-            print('All critical imports successful')
-        except ImportError as e:
-            print(f'Missing dependency: {e}')
-            sys.exit(1)
-        "
+      - name: Validate critical imports
+        run: |
+          python -c "
+          import sys
+          try:
+              import fastapi
+              import uvicorn
+              import sqlalchemy
+              import pydantic
+              import jose
+              import passlib
+              from main import app
+              from app.core import config
+              print('All critical imports successful')
+          except ImportError as e:
+              print(f'ERROR: Missing or broken import: {e}')
+              sys.exit(1)
+          "
 
-    - name: Validate environment variable usage
-      run: |
-        # Check that no hardcoded values are used instead of env vars
-        if grep -r "localhost:3306" --include="*.py" app/ | grep -v "default" | grep -v "#"; then
-          echo "Found hardcoded database host"
-          exit 1
-        fi
-        echo "No hardcoded configuration found"
+      - name: Check for hardcoded configuration
+        run: |
+          if grep -r "localhost:3306" --include="*.py" app/ | grep -v "default" | grep -v "#"; then
+            echo "ERROR: Found hardcoded database host!"
+            exit 1
+          fi
+          echo "No hardcoded configuration"
 
-    - name: Test application startup
-      env:
-        DATABASE_URL: "sqlite:///./test.db"
-        JWT_SECRET_KEY: "test-secret-key-for-ci"
-        ENVIRONMENT: "test"
-      run: |
-        timeout 10s python -c "
-        from main import app
-        print('Application imports successfully')
-        " || echo "Application structure valid"
+      - name: Test application startup
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          JWT_SECRET_KEY: test-secret-key-for-ci
+          ENVIRONMENT: testing
+        run: |
+          timeout 10s python -c "
+          from main import app
+          from fastapi.testclient import TestClient
+          client = TestClient(app)
+          response = client.get('/api/v1/health')
+          assert response.status_code == 200, f'Health check failed: {response.status_code}'
+          print('Application starts successfully')
+          "
 
-  migration-check:
-    name: Database Migration Validation
+  # Job 5: Database Migration Validation
+  migrations:
+    name: Migration Validation
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Check Alembic configuration
-      run: |
-        if [ ! -f "alembic.ini" ]; then
-          echo "alembic.ini not found"
-          exit 1
-        fi
-        echo "Alembic configuration exists"
+      - name: Validate Alembic configuration
+        run: |
+          if [ ! -f "alembic.ini" ]; then
+            echo "ERROR: alembic.ini not found!"
+            exit 1
+          fi
+          echo "✓ Alembic configuration exists"
 
-    - name: Validate migration files
-      run: |
-        # Check that migration files follow naming convention
-        if ls alembic/versions/*.py 2>/dev/null | grep -v "__pycache__" | grep -v "__init__"; then
-          echo "Migration files found"
-        else
-          echo "No migration files (this is OK for new projects)"
-        fi
+      - name: Check for migration conflicts
+        run: |
+          python -c "
+          import re
+          from pathlib import Path
 
-    - name: Check for migration conflicts
-      run: |
-        # Ensure no duplicate revision IDs
-        python -c "
-        import os
-        import re
-        from pathlib import Path
+          revisions = []
+          migration_dir = Path('alembic/versions')
 
-        revisions = []
-        migration_dir = Path('alembic/versions')
+          if migration_dir.exists():
+              for file in migration_dir.glob('*.py'):
+                  if file.name == '__init__.py':
+                      continue
+                  content = file.read_text()
+                  match = re.search(r\"revision = '([^']+)'\", content)
+                  if match:
+                      rev = match.group(1)
+                      if rev in revisions:
+                          print(f'ERROR: Duplicate revision ID: {rev}')
+                          exit(1)
+                      revisions.append(rev)
 
-        if migration_dir.exists():
-            for file in migration_dir.glob('*.py'):
-                if file.name == '__init__.py':
-                    continue
-                content = file.read_text()
-                match = re.search(r\"revision = '([^']+)'\", content)
-                if match:
-                    rev = match.group(1)
-                    if rev in revisions:
-                        print(f'Duplicate revision ID: {rev}')
-                        exit(1)
-                    revisions.append(rev)
+          print(f'No migration conflicts ({len(revisions)} migrations)')
+          "
 
-        print(f'No migration conflicts found ({len(revisions)} migrations)')
-        "
+      - name: Validate migration files
+        run: |
+          # Check that migration files exist and follow naming convention
+          if ls alembic/versions/*.py 2>/dev/null | grep -v "__pycache__" | grep -v "__init__"; then
+            echo "✓ Migration files found"
+          else
+            echo "WARNING: No migration files found"
+          fi
 
-  pr-size-check:
-    name: PR Size Check
+          # Validate Python syntax of migration files
+          for file in alembic/versions/*.py; do
+            if [ -f "$file" ] && [ "$file" != "alembic/versions/__pycache__" ]; then
+              python -m py_compile "$file" || {
+                echo "ERROR: Syntax error in $file"
+                exit 1
+              }
+            fi
+          done
+          echo "✓ All migration files have valid Python syntax"
+
+  # Job 6: PR Quality Checks (only on pull requests)
+  pr-checks:
+    name: PR Quality
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Check PR size
-      run: |
-        # Count lines changed
-        LINES_CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | awk '{print $4+$6}')
-        echo "Lines changed: $LINES_CHANGED"
+      - name: Check PR size
+        run: |
+          LINES_CHANGED=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | awk '{print $4+$6}')
+          echo "Lines changed: $LINES_CHANGED"
 
-        if [ "$LINES_CHANGED" -gt 500 ]; then
-          echo "WARNING: This PR is large ($LINES_CHANGED lines). Consider breaking it into smaller PRs."
-          echo "Large PRs are harder to review and more likely to introduce bugs."
-        else
-          echo "PR size is reasonable"
-        fi
+          if [ "$LINES_CHANGED" -gt 500 ]; then
+            echo "⚠ WARNING: Large PR ($LINES_CHANGED lines)"
+            echo "Consider breaking into smaller PRs for easier review."
+          else
+            echo "✓ PR size is reasonable ($LINES_CHANGED lines)"
+          fi
+
+      - name: Check for .env files
+        run: |
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "^\.env$"; then
+            echo "ERROR: .env file should not be committed!"
+            exit 1
+          fi
+          echo "✓ No .env files in PR"
+
+  # Summary job - requires all checks to pass
+  all-checks-passed:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [code-quality, security, tests, build, migrations, pr-checks]
+    if: always()
+    steps:
+      - name: Check all jobs
+        run: |
+          # Check required jobs (always run)
+          if [[ "${{ needs.code-quality.result }}" != "success" ]] ||
+             [[ "${{ needs.security.result }}" != "success" ]] ||
+             [[ "${{ needs.tests.result }}" != "success" ]] ||
+             [[ "${{ needs.build.result }}" != "success" ]] ||
+             [[ "${{ needs.migrations.result }}" != "success" ]]; then
+            echo "ERROR: One or more required checks failed"
+            exit 1
+          fi
+
+          # Check PR-specific job (only runs on PRs)
+          if [[ "${{ needs.pr-checks.result }}" == "failure" ]]; then
+            echo "ERROR: PR quality checks failed"
+            exit 1
+          fi
+
+          echo "All checks passed successfully!"

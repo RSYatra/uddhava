@@ -31,17 +31,17 @@ def upgrade():
     dummy_hash = "$2b$12$dummy.hash.for.existing.users.only"
     # nosec: B608 - Safe parameterized query for migration
     op.execute(
-        text("UPDATE users SET password_hash = :dummy_hash WHERE password_hash IS NULL"),
-        {"dummy_hash": dummy_hash},
+        text("UPDATE users SET password_hash = :dummy_hash WHERE password_hash IS NULL").bindparams(dummy_hash=dummy_hash)
     )
 
     # Make the column non-nullable after updating existing records
-    op.alter_column(
-        "users",
-        "password_hash",
-        existing_type=sa.String(length=255),
-        nullable=False,
-    )
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.alter_column(
+            "password_hash",
+            existing_type=sa.String(length=255),
+            nullable=False,
+        )
 
 
 def downgrade():

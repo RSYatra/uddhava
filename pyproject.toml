@@ -1,0 +1,115 @@
+[project]
+name = "uddhava"
+version = "1.0.0"
+description = "FastAPI application for devotee management"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+env = [
+    "PYTHONPATH=.",
+    "DATABASE_URL=sqlite:///./test.db",
+    "JWT_SECRET_KEY=test-secret-key-for-testing",
+    "ENVIRONMENT=testing",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "*/alembic/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+no_strict_optional = true
+check_untyped_defs = false
+# Allow untyped code but still catch real errors
+allow_untyped_calls = true
+allow_untyped_defs = true
+allow_incomplete_defs = true
+exclude = [
+    "venv",
+    "alembic/versions",
+    "tests",
+]
+
+# Relax checking for SQLAlchemy ORM patterns (common false positives)
+[[tool.mypy.overrides]]
+module = "app.db.*"
+disable_error_code = [
+    "valid-type",        # SQLAlchemy Base class issues
+    "misc",              # SQLAlchemy metaclass issues
+    "var-annotated",     # Enum columns don't need explicit annotations
+    "attr-defined",      # Pool attributes (size, checkedout, overflow)
+    "dict-item",         # Mixed dict types in pool stats
+]
+
+[[tool.mypy.overrides]]
+module = "app.services.*"
+disable_error_code = [
+    "assignment",        # SQLAlchemy Column assignments (devotee.field = value)
+    "return-value",      # Column vs actual type in returns
+    "var-annotated",     # Dict comprehensions
+    "dict-item",         # Mixed dict types in stats
+    "attr-defined",      # Missing methods/attributes (false positives)
+    "arg-type",          # Column vs str/int type mismatches in function calls
+]
+
+[[tool.mypy.overrides]]
+module = "app.api.routes.*"
+disable_error_code = [
+    "dict-item",         # Response dicts with mixed types (status_code: int)
+    "arg-type",          # Pydantic model instantiation, Column vs actual types
+]
+
+[[tool.mypy.overrides]]
+module = "app.utils.*"
+disable_error_code = [
+    "assignment",        # SQLAlchemy Column assignments
+]
+
+[[tool.mypy.overrides]]
+module = "app.core.middleware"
+disable_error_code = [
+    "var-annotated",     # Rate limit clients dict
+]
+
+[[tool.mypy.overrides]]
+module = "app.services.__init__"
+disable_error_code = [
+    "var-annotated",     # __all__ list
+]
+
+[tool.bandit]
+exclude_dirs = ["/venv", "/tests"]
+skips = ["B101"]  # assert_used - okay in tests

@@ -133,7 +133,8 @@ def create_application() -> FastAPI:
     register_routes(app)
 
     # Apply custom OpenAPI schema for enhanced Swagger UI documentation
-    app.openapi = lambda: get_custom_openapi(app)
+    # Note: This creates a custom method, not assigning to existing one
+    app.openapi = lambda: get_custom_openapi(app)  # type: ignore[method-assign]
 
     return app
 

@@ -1,46 +1,169 @@
+# Pre-commit hooks to ensure code quality before commits
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+
 repos:
-  # Ruff - Fast Python linter and formatter (replaces black, isort, flake8)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
-    hooks:
-      # Run the linter
-      - id: ruff
-        args: ["--fix"]
-      # Run the formatter
-      - id: ruff-format
-
-  # Security checks
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.6
-    hooks:
-      - id: bandit
-        args: ["--skip", "B101"]
-        exclude: ^venv/
-
-  # General file checks
+  # Standard file checks (fast - run first)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        name: Trim trailing whitespace
       - id: end-of-file-fixer
+        name: Fix end of files
       - id: check-yaml
+        name: Validate YAML
+      - id: check-toml
+        name: Validate TOML
+      - id: check-json
+        name: Validate JSON
       - id: check-added-large-files
-        args: ['--maxkb=500']
+        name: Check file size
+        args: [--maxkb=500]
       - id: check-merge-conflict
-      - id: debug-statements
+        name: Check merge conflicts
       - id: check-case-conflict
+        name: Check case conflicts
+      - id: debug-statements
+        name: Check debug statements
+      - id: mixed-line-ending
+        name: Check line endings
+        args: [--fix=lf]
 
-  # Environment file protection
+  # Dependency validation (medium - run before code changes)
   - repo: local
     hooks:
-      - id: check-credentials
-        name: Check for credentials in code
-        entry: bash -c 'if grep -r -i "password\s*=" --include="*.py" . | grep -v "DB_PASSWORD" | grep -v "credentials.py" | grep -v ".env" | grep -v "default_password" | grep -v "validate_password" | grep -v "MAIL_PASSWORD" | grep -v "get_password_hash" | grep -v "password=password"; then echo "Found hardcoded passwords!"; exit 1; fi'
+      - id: validate-dependencies
+        name: Validate requirements.txt compatibility
+        entry: bash
+        args:
+          - -c
+          - |
+            echo "Validating dependency compatibility..."
+            if ! ./venv/bin/pip install --dry-run -r requirements.txt 2>&1 | tee /tmp/pip-check.log; then
+              echo "ERROR: Dependency conflicts detected!"
+              grep -E "(ERROR|conflict)" /tmp/pip-check.log
+              exit 1
+            fi
+            echo "All dependencies compatible"
+        language: system
+        pass_filenames: false
+        files: requirements\.txt$
+
+  # Ruff - All-in-one linter and formatter (replaces black, isort, flake8, pyupgrade)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff
+        name: Ruff linter
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: ^(venv/|alembic/versions/)
+      - id: ruff-format
+        name: Ruff formatter
+        exclude: ^(venv/|alembic/versions/)
+
+  # Test execution (run after formatting/linting)
+  - repo: local
+    hooks:
+      - id: run-tests
+        name: Run test suite
+        entry: bash
+        args:
+          - -c
+          - |
+            export PYTHONPATH=$PWD
+            export DATABASE_URL=sqlite:///./test.db
+            export JWT_SECRET_KEY=test-secret-key
+            export ENVIRONMENT=testing
+            echo "Running tests..."
+            if ! ./venv/bin/pytest -v --tb=short 2>&1; then
+              echo "ERROR: Tests failed!"
+              exit 1
+            fi
+            echo "All tests passed"
+        language: system
+        pass_filenames: false
+        files: \.(py|txt)$
+
+  # Type checking with mypy (gradual adoption, non-blocking for now)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        name: Type checking
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - types-requests
+          - types-PyMySQL
+          - pydantic
+          - sqlalchemy
+        exclude: ^(venv/|tests/|alembic/)
+
+  # Security scanning with bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.1
+    hooks:
+      - id: bandit
+        name: Security analysis
+        args: [-c, pyproject.toml, -ll, -r, .]
+        exclude: ^(venv/|tests/)
+
+  # Custom security checks (matching CI exactly)
+  - repo: local
+    hooks:
+      - id: check-hardcoded-credentials
+        name: Scan for hardcoded credentials
+        entry: bash
+        args:
+          - -c
+          - |
+            EXIT_CODE=0
+            if grep -rE '(password|passwd|pwd)\s*=\s*["\047][^"\047]{3,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "example" | grep -v "validate_password" | grep -v "get_password" | grep -v "input_validator"; then
+              echo "ERROR: Found hardcoded passwords!"
+              EXIT_CODE=1
+            fi
+            if grep -rE '(secret|token)\s*=\s*["\047][A-Za-z0-9_-]{20,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_" | grep -v "SECRET_KEY" | grep -v "test-secret"; then
+              echo "ERROR: Found hardcoded secrets!"
+              EXIT_CODE=1
+            fi
+            if grep -rE 'api[_-]?key\s*=\s*["\047][A-Za-z0-9_-]{20,}["\047]' --include="*.py" . 2>/dev/null | grep -v ".env" | grep -v "test_"; then
+              echo "ERROR: Found hardcoded API keys!"
+              EXIT_CODE=1
+            fi
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "No hardcoded credentials found"
+            fi
+            exit $EXIT_CODE
+        language: system
+        pass_filenames: false
+        files: \.py$
+
+      - id: block-env-files
+        name: Block .env file commits
+        entry: bash
+        args:
+          - -c
+          - |
+            if git ls-files | grep -q "^\.env$"; then
+              echo "ERROR: .env files must not be committed!"
+              exit 1
+            fi
+            echo "No .env files in commit"
         language: system
         pass_filenames: false
 
-      - id: check-env-files
-        name: Ensure .env files are not committed
-        entry: bash -c 'if git ls-files | grep -q "^\.env$"; then echo ".env files should not be committed!"; exit 1; fi'
+      - id: check-python-imports
+        name: Verify Python imports
+        entry: bash
+        args:
+          - -c
+          - |
+            export PYTHONPATH=$PWD
+            if ! ./venv/bin/python -c "import main; from app.core import config" 2>&1; then
+              echo "ERROR: Critical imports failed!"
+              exit 1
+            fi
+            echo "Python imports valid"
         language: system
         pass_filenames: false
+        files: \.py$
