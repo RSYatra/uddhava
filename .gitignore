@@ -127,9 +127,6 @@ server.log
 server_debug.log
 server.pid
 
-# Uploads
-uploads/
-
 # Alembic
 alembic/versions/__pycache__/
 

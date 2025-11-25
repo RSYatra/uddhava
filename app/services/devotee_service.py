@@ -32,6 +32,7 @@ from app.schemas.devotee import (
     DevoteeUpdate,
 )
 from app.services.gmail_service import GmailService
+from app.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,6 @@ class DevoteeService:
 
     def __init__(self, db: Session):
         self.db = db
-        self.upload_dir = Path(settings.upload_directory)
-        self.upload_dir.mkdir(exist_ok=True)
 
     def create_devotee(
         self,
@@ -85,9 +84,13 @@ class DevoteeService:
         self._validate_devotee_data(devotee_data)
 
         # Handle photo upload
+        # For new devotees, we don't have user_id yet, so we'll skip photo upload during creation
+        # Photo can be uploaded later during profile completion
         photo_path = None
         if photo:
-            photo_path = self._save_photo(photo, devotee_data.email)
+            logger.info(
+                "Photo upload during signup is deprecated. Use complete-profile endpoint instead."
+            )
 
         # Prepare children data
         children_json = None
@@ -348,9 +351,18 @@ class DevoteeService:
 
         # Handle photo upload
         if photo:
-            # Remove old photo if exists (placeholder for now)
-            # TODO: Implement cloud storage integration
-            update_data["photo_path"] = self._save_photo(photo, devotee.email)
+            storage_service = StorageService()
+
+            # Delete old photo if exists
+            if devotee.profile_photo_path:
+                old_filename = Path(devotee.profile_photo_path).name
+                storage_service.delete_file(devotee.id, old_filename)
+
+            # Upload new photo
+            photo_metadata = storage_service.upload_file(
+                file=photo, user_id=devotee.id, file_purpose="profile_photo"
+            )
+            update_data["photo_path"] = photo_metadata["gcs_path"]
 
         # Apply updates with string trimming
         for field, value in update_data.items():
@@ -808,177 +820,6 @@ class DevoteeService:
 
         return devotee
 
-    def _save_photo(self, photo: UploadFile, devotee_email: str) -> str:
-        """Save uploaded photo and return relative path."""
-        # Validate file
-        if not photo.content_type or not photo.content_type.startswith("image/"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only image files are allowed",
-            )
-
-        # Generate filename
-        file_extension = photo.filename.split(".")[-1].lower() if photo.filename else "jpg"
-        safe_email = devotee_email.replace("@", "_at_").replace(".", "_")
-        timestamp = int(datetime.utcnow().timestamp())
-        filename = f"devotee_{safe_email}_{timestamp}.{file_extension}"
-        file_path = self.upload_dir / filename
-
-        # Save file
-        try:
-            with open(file_path, "wb") as buffer:
-                content = photo.file.read()
-                buffer.write(content)
-
-            logger.info(f"Saved photo: {filename}")
-            return str(file_path)
-
-        except Exception as e:
-            logger.error(f"Failed to save photo: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to save photo",
-            )
-
-    def _save_file(
-        self,
-        file: UploadFile,
-        user_id: int,
-        file_category: str = "documents",  # "photos" or "documents"
-    ) -> dict[str, str]:
-        """
-        Save uploaded file with comprehensive validation and return file metadata.
-
-        Args:
-            file: The uploaded file
-            user_id: User's ID for creating user-specific directory
-            file_category: Type of file - "photos" or "documents"
-
-        Returns:
-            dict: File metadata including name, path, type, size
-
-        Raises:
-            HTTPException: For invalid file size, type, or save errors
-        """
-        # Validate file exists and has content
-        if not file or not file.filename:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File is required and must have a filename",
-            )
-
-        # Validate file size
-        file.file.seek(0, 2)  # Seek to end
-        file_size = file.file.tell()
-        file.file.seek(0)  # Reset to beginning
-
-        max_size = settings.max_file_size_bytes
-        if file_size > max_size:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds maximum allowed size ({settings.max_file_size_mb}MB)",
-            )
-
-        # Validate file extension
-        file_ext = Path(file.filename).suffix.lower()
-
-        if file_category == "photos":
-            allowed_exts = settings.allowed_image_extensions
-            if file_ext not in allowed_exts:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid image file type. Allowed: {', '.join(allowed_exts)}",
-                )
-        elif file_category == "documents":
-            allowed_exts = settings.allowed_document_extensions
-            if file_ext not in allowed_exts:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid document file type. Allowed: {', '.join(allowed_exts)}",
-                )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid file category. Must be 'photos' or 'documents'",
-            )
-
-        # Create user-specific directory
-        user_dir = Path(settings.upload_directory) / file_category / str(user_id)
-        user_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate secure filename
-        random_str = secrets.token_urlsafe(8)
-        timestamp = int(datetime.now(UTC).timestamp())
-        # Sanitize original filename (keep only alphanumeric and dash)
-        safe_original_name = "".join(
-            c if c.isalnum() or c in ".-_ " else "_" for c in Path(file.filename).stem
-        )[:50]
-        safe_filename = f"{file_category}_{timestamp}_{random_str}_{safe_original_name}{file_ext}"
-        file_path = user_dir / safe_filename
-
-        # Save file
-        try:
-            with open(file_path, "wb") as buffer:
-                content = file.file.read()
-                buffer.write(content)
-
-            # Get relative path from uploads directory
-            relative_path = str(file_path.relative_to(settings.upload_directory))
-
-            logger.info(
-                f"Saved {file_category} file for user {user_id}: {safe_filename} ({file_size} bytes)"
-            )
-
-            # Return file metadata
-            return {
-                "name": file.filename,
-                "path": relative_path,
-                "type": file_category,
-                "size": file_size,
-                "uploaded_at": datetime.now(UTC).isoformat(),
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to save file for user {user_id}: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to save file. Please try again.",
-            )
-
-    def _delete_file(self, file_path: str) -> bool:
-        """
-        Delete a file from filesystem.
-
-        Args:
-            file_path: Relative path from uploads directory
-
-        Returns:
-            bool: True if file was deleted, False if file doesn't exist
-        """
-        try:
-            full_path = Path(settings.upload_directory) / file_path
-
-            # Security check: ensure path is within uploads directory
-            try:
-                full_path.resolve().relative_to(Path(settings.upload_directory).resolve())
-            except ValueError:
-                logger.error(
-                    f"Security violation: attempted to delete file outside uploads directory: {file_path}"
-                )
-                return False
-
-            if full_path.exists() and full_path.is_file():
-                full_path.unlink()
-                logger.info(f"Deleted file: {file_path}")
-                return True
-
-            logger.warning(f"File not found for deletion: {file_path}")
-            return False
-
-        except Exception as e:
-            logger.error(f"Failed to delete file {file_path}: {e}")
-            return False
-
     def _validate_total_file_size(self, devotee: Devotee, new_file_size: int) -> None:
         """
         Validate that adding a new file won't exceed total size limit.
@@ -1051,8 +892,11 @@ class DevoteeService:
 
             # Handle profile photo upload
             if profile_photo:
-                photo_metadata = self._save_file(profile_photo, user_id, "photos")
-                devotee.profile_photo_path = photo_metadata["path"]
+                storage_service = StorageService()
+                photo_metadata = storage_service.upload_file(
+                    file=profile_photo, user_id=user_id, file_purpose="profile_photo"
+                )
+                devotee.profile_photo_path = photo_metadata["gcs_path"]
                 logger.info(f"Saved profile photo for user {user_id}")
 
             # Handle document uploads
@@ -1068,8 +912,9 @@ class DevoteeService:
                     )
 
                 # Save each file and collect metadata
+                storage_service = StorageService()
                 new_files_metadata = []
-                for uploaded_file in uploaded_files:
+                for idx, uploaded_file in enumerate(uploaded_files, 1):
                     # Validate total size before saving
                     uploaded_file.file.seek(0, 2)
                     file_size = uploaded_file.file.tell()
@@ -1077,8 +922,17 @@ class DevoteeService:
 
                     self._validate_total_file_size(devotee, file_size)
 
-                    # Save file
-                    file_metadata = self._save_file(uploaded_file, user_id, "documents")
+                    # Extract purpose from filename or use default
+                    purpose = (
+                        Path(uploaded_file.filename).stem
+                        if uploaded_file.filename
+                        else f"document_{idx}"
+                    )
+
+                    # Save file to GCS
+                    file_metadata = storage_service.upload_file(
+                        file=uploaded_file, user_id=user_id, file_purpose=purpose
+                    )
                     new_files_metadata.append(file_metadata)
 
                 # Update devotee's uploaded_files array
