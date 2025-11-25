@@ -67,7 +67,6 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 20  # Total size limit per user
     max_file_size_mb: int = 5  # Individual file size limit
     max_files_per_user: int = 5  # Maximum number of files per user
-    upload_directory: str = "uploads"  # Base directory for uploads
     allowed_image_extensions: list = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
     # Documents can be PDFs, Office docs, text files, or images (for scanned documents)
     allowed_document_extensions: list = [
@@ -81,6 +80,11 @@ class Settings(BaseSettings):
         ".gif",
         ".webp",
     ]
+
+    # Google Cloud Storage Configuration
+    gcs_bucket_name: str = "uddhava-user-files"
+    gcs_project_id: str = "potent-poet-474916-a8"
+    use_gcs: bool = True  # Always use GCS for file storage
 
     # CORS - Allowed origins for production and development
     allowed_origins: list = [
