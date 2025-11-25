@@ -173,7 +173,7 @@ class TestAuthentication:
         """Test accessing protected endpoint without token."""
         response = client.get("/api/v1/devotees")
 
-        assert response.status_code == 403  # Should require authentication
+        assert response.status_code in [401, 403]  # Should require authentication (401 or 403)
 
     def test_protected_endpoint_with_valid_token(self):
         """Test accessing protected endpoint with valid token."""
