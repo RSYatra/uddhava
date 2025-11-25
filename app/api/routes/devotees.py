@@ -12,15 +12,17 @@ from pathlib import Path
 from fastapi import (
     APIRouter,
     Depends,
+    File,
+    Form,
     HTTPException,
     Query,
+    UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.dependencies import check_resource_access, require_admin
 from app.core.security import get_current_user
 from app.db.models import Devotee, Gender, InitiationStatus, MaritalStatus, UserRole
@@ -40,6 +42,7 @@ from app.schemas.devotee_responses import (
 
 # NOTE: Using service class directly with per-request instantiation
 from app.services.devotee_service import DevoteeService
+from app.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -694,85 +697,270 @@ async def validate_email_availability(
 
 
 @router.get(
-    "/{devotee_id}/files/{file_type}/{filename}",
+    "/{devotee_id}/files/{filename}",
     summary="Download Devotee File",
     description="""
-Download a devotee's uploaded file (profile photo or document).
-
-**File Types:**
-- `photos`: Profile photos
-- `documents`: Uploaded documents
+Download a devotee's uploaded file (profile photo or document) from Google Cloud Storage.
 
 **Access Control:**
 - Users can download their own files
 - Admin users can download any user's files
 
 **Security:**
+- Authenticated access only
 - Path traversal protection
 - File existence validation
 - Access control enforcement
+
+**File Organization:**
+Files are stored in GCS with path: `{user_id}/{filename}`
     """,
 )
 async def download_devotee_file(
     devotee_id: int,
-    file_type: str,
     filename: str,
     current_user: Devotee = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Download a devotee's uploaded file with security checks.
+    Download a devotee's uploaded file via authenticated proxy from GCS.
 
     Args:
         devotee_id: The devotee's user ID
-        file_type: Type of file - "photos" or "documents"
         filename: Name of the file to download
         current_user: Current authenticated user
         db: Database session
 
     Returns:
-        FileResponse: The requested file
+        Response: The requested file with appropriate content type
 
     Raises:
-        HTTPException: For access denied, invalid file type, or file not found
+        HTTPException: For access denied or file not found
     """
     # Check access: admin or owner
     check_resource_access(current_user, devotee_id, "file")
 
-    # Validate file_type
-    if file_type not in ["photos", "documents"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file type. Must be 'photos' or 'documents'",
-        )
+    # Download from GCS
+    storage_service = StorageService()
+    content, content_type = storage_service.download_file(devotee_id, filename)
 
-    # Construct file path
-    file_path = Path(settings.upload_directory) / file_type / str(devotee_id) / filename
+    logger.info(f"User {current_user.id} downloaded file: {devotee_id}/{filename}")
 
-    # Security check: ensure path is within allowed directory
-    try:
-        file_path.resolve().relative_to(Path(settings.upload_directory).resolve())
-    except ValueError:
-        logger.warning(
-            f"Security violation: User {current_user.id} attempted path traversal with: {filename}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: Invalid file path",
-        )
+    # Return file as streaming response
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/{devotee_id}/files",
+    summary="Upload Devotee Files",
+    description="""
+Upload new files (profile photo or documents) for a devotee to Google Cloud Storage.
+
+**Access Control:**
+- Users can upload their own files
+- Admin users can upload files for any user
+
+**File Types:**
+- Profile photo: Single image file (max 5MB, formats: .jpg, .jpeg, .png, .gif, .webp)
+- Documents: Multiple document files (max 5MB each, formats: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp)
+
+**Limits:**
+- Maximum 5 files per user (including profile photo)
+- Maximum 20MB total storage per user
+    """,
+)
+async def upload_devotee_files(
+    devotee_id: int,
+    purpose: str = Form(
+        ...,
+        description="Purpose of the file: 'profile_photo' or descriptive name like 'passport', 'id_card', etc.",
+    ),
+    file: UploadFile = File(..., description="The file to upload"),
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload a new file for a devotee.
+
+    Args:
+        devotee_id: The devotee's user ID
+        purpose: Purpose/category of the file (e.g., 'profile_photo', 'passport', 'id_card')
+        file: The file to upload
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        dict: Metadata of the uploaded file
+
+    Raises:
+        HTTPException: For access denied, validation errors, or upload failures
+    """
+    # Check access: admin or owner
+    check_resource_access(current_user, devotee_id, "file_upload")
+
+    # Get devotee from database
+    devotee = db.query(Devotee).filter(Devotee.id == devotee_id).first()
+    if not devotee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devotee not found")
+
+    # Upload file to GCS
+    storage_service = StorageService()
+    file_metadata = storage_service.upload_file(file=file, user_id=devotee_id, file_purpose=purpose)
+
+    logger.info(f"User {current_user.id} uploaded file '{purpose}' for devotee {devotee_id}")
+
+    return {
+        "success": True,
+        "status_code": 201,
+        "message": "File uploaded successfully",
+        "data": file_metadata,
+    }
+
+
+@router.get(
+    "/{devotee_id}/files",
+    summary="List Devotee Files",
+    description="""
+List all files uploaded by a devotee from Google Cloud Storage.
+
+**Access Control:**
+- Users can list their own files
+- Admin users can list any user's files
+
+**Returns:**
+Array of file metadata including name, size, content type, and upload timestamp.
+    """,
+)
+async def list_devotee_files(
+    devotee_id: int,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    List all files for a devotee.
+
+    Args:
+        devotee_id: The devotee's user ID
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        dict: List of file metadata
+
+    Raises:
+        HTTPException: For access denied
+    """
+    # Check access: admin or owner
+    check_resource_access(current_user, devotee_id, "file")
+
+    # List files from GCS
+    storage_service = StorageService()
+    files = storage_service.list_user_files(devotee_id)
+
+    logger.info(f"User {current_user.id} listed {len(files)} files for devotee {devotee_id}")
+
+    return {
+        "success": True,
+        "status_code": 200,
+        "message": f"Found {len(files)} file(s)",
+        "data": files,
+    }
+
+
+@router.put(
+    "/{devotee_id}/files/{filename}",
+    summary="Update Devotee File",
+    description="""
+Update (replace) an existing file for a devotee in Google Cloud Storage.
+
+**Access Control:**
+- Users can update their own files
+- Admin users can update any user's files
+
+**File Validation:**
+- Maximum file size: 5MB
+- Allowed extensions for images: .jpg, .jpeg, .png, .gif, .webp
+- Allowed extensions for documents: .pdf, .doc, .docx, .txt, .jpg, .jpeg, .png, .gif, .webp
+
+**Note:**
+The new file will replace the old file with the same filename.
+    """,
+)
+async def update_devotee_file(
+    devotee_id: int,
+    filename: str,
+    file: UploadFile,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update (replace) an existing file.
+
+    Args:
+        devotee_id: The devotee's user ID
+        filename: Name of the file to replace
+        file: New file to upload
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        dict: Success message with new file metadata
+
+    Raises:
+        HTTPException: For access denied, file not found, or validation errors
+    """
+    # Check access: admin or owner
+    check_resource_access(current_user, devotee_id, "file")
+
+    storage_service = StorageService()
 
     # Check if file exists
-    if not file_path.exists() or not file_path.is_file():
+    if not storage_service.file_exists(devotee_id, filename):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
 
-    logger.info(f"User {current_user.id} downloading file: {file_type}/{devotee_id}/{filename}")
+    # Delete old file
+    storage_service.delete_file(devotee_id, filename)
 
-    # Return file with appropriate media type
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type="application/octet-stream",
-    )
+    # Extract purpose from filename (remove extension)
+    purpose = Path(filename).stem
+
+    # Upload new file with same purpose
+    file_metadata = storage_service.upload_file(file=file, user_id=devotee_id, file_purpose=purpose)
+
+    # Update database metadata
+    devotee = db.query(Devotee).filter(Devotee.id == devotee_id).first()
+    if devotee:
+        # Update profile_photo_path if this is a profile photo
+        if filename.startswith("profile_photo"):
+            devotee.profile_photo_path = file_metadata["gcs_path"]
+
+        # Update uploaded_files array if this is a document
+        if devotee.uploaded_files:
+            # Find and update the file metadata in the array
+            updated_files = []
+            for existing_file in devotee.uploaded_files:  # type: ignore[attr-defined]
+                if existing_file.get("name") == filename or existing_file.get(
+                    "gcs_path", ""
+                ).endswith(filename):
+                    updated_files.append(file_metadata)
+                else:
+                    updated_files.append(existing_file)
+            devotee.uploaded_files = updated_files  # type: ignore[assignment]
+
+        db.commit()
+
+    logger.info(f"User {current_user.id} updated file: {devotee_id}/{filename}")
+
+    return {
+        "success": True,
+        "status_code": 200,
+        "message": "File updated successfully",
+        "data": file_metadata,
+    }
