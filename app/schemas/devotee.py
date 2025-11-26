@@ -8,7 +8,7 @@ validation and serialization for the enhanced devotee management system.
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.core.password_validation import validate_password_strength
 from app.db.models import Gender, InitiationStatus, MaritalStatus, UserRole
@@ -273,9 +273,6 @@ class DevoteeOut(DevoteeBase):
         None, description="Whether devotee has Brahmin initiation"
     )
 
-    # Exclude initiation_status from parent class (we use is_harinam_initiated and is_brahmin_initiated instead)
-    initiation_status: InitiationStatus | None = Field(None, exclude=True)
-
     @field_validator("children", mode="before")
     @classmethod
     def extract_children_list(cls, v):
@@ -298,6 +295,17 @@ class DevoteeOut(DevoteeBase):
 
         # Otherwise return as is (will fail validation if invalid)
         return v
+
+    @model_validator(mode="after")
+    def compute_initiation_flags(self):
+        """Compute boolean initiation flags from initiation_status."""
+        if self.initiation_status:
+            self.is_harinam_initiated = self.initiation_status in [
+                InitiationStatus.HARINAM,
+                InitiationStatus.BRAHMIN,
+            ]
+            self.is_brahmin_initiated = self.initiation_status == InitiationStatus.BRAHMIN
+        return self
 
     model_config = ConfigDict(from_attributes=True)
 
