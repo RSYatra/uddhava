@@ -16,7 +16,7 @@ from app.schemas.center import CenterListResponse, CenterOut
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/centers", tags=["Centers"])
+router = APIRouter(prefix="/centers", tags=["Master Database"])
 
 
 @router.get(
