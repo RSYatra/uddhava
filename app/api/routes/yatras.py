@@ -8,6 +8,7 @@ Public endpoints for listing and viewing yatras.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_admin
@@ -128,6 +129,16 @@ def get_yatra(
                 "data": yatra_data,
             },
         )
+    except ValidationError as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message": f"Yatra data validation failed: {str(e.errors()[0]['msg'])}",
+                "data": None,
+            },
+        )
     except HTTPException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -164,6 +175,16 @@ def update_yatra(
                 "status_code": status.HTTP_200_OK,
                 "message": "Yatra updated successfully",
                 "data": YatraOut.model_validate(yatra).model_dump(mode="json"),
+            },
+        )
+    except ValidationError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "success": False,
+                "status_code": status.HTTP_400_BAD_REQUEST,
+                "message": f"Invalid yatra data: {str(e.errors()[0]['msg'])}",
+                "data": None,
             },
         )
     except HTTPException as e:
