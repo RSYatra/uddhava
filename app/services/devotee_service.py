@@ -851,7 +851,7 @@ class DevoteeService:
         profile_data: dict,
         profile_photo: UploadFile | None = None,
         uploaded_files: list[UploadFile] | None = None,
-    ) -> bool:
+    ) -> Devotee:
         """
         Complete devotee profile after email verification with file uploads.
 
@@ -862,7 +862,7 @@ class DevoteeService:
             uploaded_files: Optional list of document files (max 5)
 
         Returns:
-            bool: True if profile completed successfully
+            Devotee: The updated devotee object
 
         Raises:
             HTTPException: For validation errors or save failures
@@ -940,8 +940,9 @@ class DevoteeService:
                 logger.info(f"Saved {len(new_files_metadata)} document(s) for user {user_id}")
 
             self.db.commit()
+            self.db.refresh(devotee)
             logger.info(f"Completed profile for devotee: {devotee.email}")
-            return True
+            return devotee
 
         except HTTPException:
             self.db.rollback()

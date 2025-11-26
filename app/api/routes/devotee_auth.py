@@ -36,6 +36,7 @@ from app.db.models import Devotee
 from app.db.session import get_db
 from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.devotee import (
+    DevoteeOut,
     DevoteeSimpleCreate,
 )
 from app.schemas.email_verification import (
@@ -640,6 +641,14 @@ async def complete_devotee_profile(
         Form(description="ISKCON initiation status: ASPIRING, HARINAM, or BRAHMIN"),
         Field(default=None, example="HARINAM"),
     ] = None,
+    initiated_name: Annotated[
+        str | None,
+        Form(
+            description="Spiritual name given at initiation (for Harinam or Brahmin initiated devotees)",
+            max_length=127,
+        ),
+        Field(default=None, example="Govinda Das"),
+    ] = None,
     spiritual_master: Annotated[
         str | None,
         Form(
@@ -884,6 +893,7 @@ async def complete_devotee_profile(
             "country": country,
             "postal_code": postal_code,
             "initiation_status": initiation_status,
+            "initiated_name": initiated_name,
             "spiritual_master": spiritual_master,
             "initiation_date": parsed_initiation_date,
             "initiation_place": initiation_place,
@@ -911,7 +921,7 @@ async def complete_devotee_profile(
             logger.info(f"Profile photo received: {profile_photo.filename}")
 
         # Complete the profile using the authenticated user's ID with files
-        success = await service.complete_devotee_profile(
+        updated_devotee = await service.complete_devotee_profile(
             user_id=user_id,
             profile_data=profile_data,
             profile_photo=profile_photo
@@ -920,32 +930,23 @@ async def complete_devotee_profile(
             uploaded_files=uploaded_documents if uploaded_documents else None,
         )
 
-        if success:
-            files_count = (
-                1
-                if profile_photo and hasattr(profile_photo, "filename") and profile_photo.filename
-                else 0
-            ) + len(uploaded_documents)
-            logger.info(
-                f"Profile completed successfully for user {user_id} with {files_count} file(s)"
-            )
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={
-                    "success": True,
-                    "status_code": 200,
-                    "message": f"Profile completed successfully. {files_count} file(s) uploaded.",
-                    "data": None,
-                },
-            )
-        logger.warning(f"Failed to complete profile for user {user_id}")
+        files_count = (
+            1
+            if profile_photo and hasattr(profile_photo, "filename") and profile_photo.filename
+            else 0
+        ) + len(uploaded_documents)
+        logger.info(f"Profile completed successfully for user {user_id} with {files_count} file(s)")
+
+        # Convert devotee to response schema
+        devotee_data = DevoteeOut.model_validate(updated_devotee).model_dump(mode="json")
+
         return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_200_OK,
             content={
-                "success": False,
-                "status_code": 400,
-                "message": "Failed to complete profile. Please check your data and try again.",
-                "data": None,
+                "success": True,
+                "status_code": 200,
+                "message": f"Profile completed successfully. {files_count} file(s) uploaded.",
+                "data": devotee_data,
             },
         )
 

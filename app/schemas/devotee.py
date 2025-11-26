@@ -228,6 +228,7 @@ class DevoteeUpdate(BaseModel):
 
     # ISKCON Spiritual Information
     initiation_status: InitiationStatus | None = None
+    initiated_name: str | None = Field(None, max_length=127)
     spiritual_master: str | None = Field(None, max_length=255)
     initiation_date: date | None = None
     initiation_place: str | None = Field(None, max_length=127)
@@ -264,8 +265,7 @@ class DevoteeOut(DevoteeBase):
     role: UserRole = Field(default=UserRole.USER, description="User role")
     children: list[dict[str, Any]] | None = Field(None, description="Children information")
 
-    # Computed fields
-    initiated_name: str | None = Field(None, description="Initiated devotee name")
+    # Computed fields (derived from initiation_status)
     is_harinam_initiated: bool | None = Field(
         None, description="Whether devotee has Harinam initiation"
     )
@@ -273,7 +273,7 @@ class DevoteeOut(DevoteeBase):
         None, description="Whether devotee has Brahmin initiation"
     )
 
-    # Exclude initiation_status from parent class
+    # Exclude initiation_status from parent class (we use is_harinam_initiated and is_brahmin_initiated instead)
     initiation_status: InitiationStatus | None = Field(None, exclude=True)
 
     @field_validator("children", mode="before")
