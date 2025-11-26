@@ -151,6 +151,11 @@ class Devotee(Base):
         index=True,
         default=InitiationStatus.ASPIRING,
     )
+    initiated_name = Column(
+        String(127),
+        nullable=True,
+        comment="Spiritual name given at initiation (Harinam or Brahmin)",
+    )
     spiritual_master = Column(String(255), nullable=True, index=True)
     initiation_date = Column(Date, nullable=True)
     initiation_place = Column(String(127), nullable=True)
