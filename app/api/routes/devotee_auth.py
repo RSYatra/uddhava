@@ -641,6 +641,14 @@ async def complete_devotee_profile(
         Form(description="ISKCON initiation status: ASPIRING, HARINAM, or BRAHMIN"),
         Field(default=None, example="HARINAM"),
     ] = None,
+    initiated_name: Annotated[
+        str | None,
+        Form(
+            description="Spiritual name given at initiation (for Harinam or Brahmin initiated devotees)",
+            max_length=127,
+        ),
+        Field(default=None, example="Govinda Das"),
+    ] = None,
     spiritual_master: Annotated[
         str | None,
         Form(
@@ -885,6 +893,7 @@ async def complete_devotee_profile(
             "country": country,
             "postal_code": postal_code,
             "initiation_status": initiation_status,
+            "initiated_name": initiated_name,
             "spiritual_master": spiritual_master,
             "initiation_date": parsed_initiation_date,
             "initiation_place": initiation_place,
