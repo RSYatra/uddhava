@@ -228,6 +228,7 @@ class DevoteeUpdate(BaseModel):
 
     # ISKCON Spiritual Information
     initiation_status: InitiationStatus | None = None
+    initiated_name: str | None = Field(None, max_length=127)
     spiritual_master: str | None = Field(None, max_length=255)
     initiation_date: date | None = None
     initiation_place: str | None = Field(None, max_length=127)
