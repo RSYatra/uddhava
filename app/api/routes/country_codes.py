@@ -16,7 +16,7 @@ from app.schemas.country_code import CountryCodeListResponse, CountryCodeOut
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/country-codes", tags=["Country Codes"])
+router = APIRouter(prefix="/country-codes", tags=["Master Database"])
 
 
 @router.get(
