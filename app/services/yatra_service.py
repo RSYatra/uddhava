@@ -99,8 +99,8 @@ class YatraService:
             if not yatra:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Yatra not found")
 
-            # Don't allow updating if yatra has started
-            if yatra.start_date <= date.today():
+            # Don't allow updating if yatra has already started (past date, not today)
+            if yatra.start_date < date.today():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot update yatra that has already started",

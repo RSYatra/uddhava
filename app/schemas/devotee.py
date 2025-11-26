@@ -58,6 +58,11 @@ class DevoteeBase(BaseModel):
     initiation_status: InitiationStatus | None = Field(
         InitiationStatus.ASPIRING, description="Current initiation status"
     )
+    initiated_name: str | None = Field(
+        None,
+        max_length=127,
+        description="Spiritual name given at initiation (for Harinam or Brahmin initiated devotees)",
+    )
     spiritual_master: str | None = Field(
         None, max_length=255, description="Name of spiritual master"
     )
