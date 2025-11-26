@@ -16,7 +16,7 @@ from app.schemas.spiritual_master import SpiritualMasterListResponse, SpiritualM
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/spiritual-masters", tags=["Spiritual Masters"])
+router = APIRouter(prefix="/spiritual-masters", tags=["Master Database"])
 
 
 @router.get(

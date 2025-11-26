@@ -19,7 +19,16 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import centers, country_codes, devotee_auth, devotees, health, spiritual_masters
+from app.api.routes import (
+    centers,
+    country_codes,
+    devotee_auth,
+    devotees,
+    health,
+    spiritual_masters,
+    yatra_registrations,
+    yatras,
+)
 from app.core.auth_middleware import (
     AuthSecurityMiddleware,
     ContentSecurityPolicyMiddleware,
@@ -376,6 +385,10 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(centers.router, prefix="/api/v1")
     app.include_router(country_codes.router, prefix="/api/v1")
     app.include_router(spiritual_masters.router, prefix="/api/v1")
+
+    # Yatra management routes
+    app.include_router(yatras.router, prefix="/api/v1")
+    app.include_router(yatra_registrations.router, prefix="/api/v1")
 
     # Root endpoint - Landing page
     @app.get("/", tags=["Root"], include_in_schema=False)
