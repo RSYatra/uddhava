@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Override the database dependency
 from app.db.models import Base, Devotee
 from app.db.session import get_db
 from main import app
@@ -16,9 +15,6 @@ from main import app
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create tables
-Base.metadata.create_all(bind=engine)
 
 
 def override_get_db():
@@ -30,6 +26,7 @@ def override_get_db():
         db.close()
 
 
+# Override the database dependency BEFORE creating the test client
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 

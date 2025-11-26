@@ -16,7 +16,7 @@ from app.db.session import get_db
 from main import app
 
 # Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_yatra.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
