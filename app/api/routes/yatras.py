@@ -6,8 +6,9 @@ Admin-only endpoints for creating, updating, and deleting yatras.
 Public endpoints for listing and viewing yatras.
 """
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_admin
@@ -32,18 +33,29 @@ def create_yatra(
     db: Session = Depends(get_db),
 ):
     """Create new yatra (admin only)."""
-    service = YatraService(db)
-    yatra = service.create_yatra(yatra_data, current_user.id)
+    try:
+        service = YatraService(db)
+        yatra = service.create_yatra(yatra_data, current_user.id)
 
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content={
-            "success": True,
-            "status_code": status.HTTP_201_CREATED,
-            "message": "Yatra created successfully",
-            "data": YatraOut.model_validate(yatra).model_dump(mode="json"),
-        },
-    )
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "success": True,
+                "status_code": status.HTTP_201_CREATED,
+                "message": "Yatra created successfully",
+                "data": YatraOut.model_validate(yatra).model_dump(mode="json"),
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
 
 
 @router.get(
@@ -98,24 +110,45 @@ def get_yatra(
     db: Session = Depends(get_db),
 ):
     """Get yatra details with optional statistics."""
-    service = YatraService(db)
-    result = service.get_yatra(yatra_id, include_stats=include_stats)
+    try:
+        service = YatraService(db)
+        result = service.get_yatra(yatra_id, include_stats=include_stats)
 
-    yatra_data = YatraOut.model_validate(result["yatra"]).model_dump(mode="json")
-    yatra_data["is_registration_open"] = result["is_registration_open"]
+        yatra_data = YatraOut.model_validate(result["yatra"]).model_dump(mode="json")
+        yatra_data["is_registration_open"] = result["is_registration_open"]
 
-    if include_stats and "stats" in result:
-        yatra_data["registration_stats"] = result["stats"]
+        if include_stats and "stats" in result:
+            yatra_data["registration_stats"] = result["stats"]
 
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "success": True,
-            "status_code": status.HTTP_200_OK,
-            "message": "Yatra retrieved successfully",
-            "data": yatra_data,
-        },
-    )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": "Yatra retrieved successfully",
+                "data": yatra_data,
+            },
+        )
+    except ValidationError as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message": f"Yatra data validation failed: {str(e.errors()[0]['msg'])}",
+                "data": None,
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
 
 
 @router.put(
@@ -131,18 +164,39 @@ def update_yatra(
     db: Session = Depends(get_db),
 ):
     """Update yatra (admin only)."""
-    service = YatraService(db)
-    yatra = service.update_yatra(yatra_id, yatra_data, current_user.id)
+    try:
+        service = YatraService(db)
+        yatra = service.update_yatra(yatra_id, yatra_data, current_user.id)
 
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "success": True,
-            "status_code": status.HTTP_200_OK,
-            "message": "Yatra updated successfully",
-            "data": YatraOut.model_validate(yatra).model_dump(mode="json"),
-        },
-    )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": "Yatra updated successfully",
+                "data": YatraOut.model_validate(yatra).model_dump(mode="json"),
+            },
+        )
+    except ValidationError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "success": False,
+                "status_code": status.HTTP_400_BAD_REQUEST,
+                "message": f"Invalid yatra data: {str(e.errors()[0]['msg'])}",
+                "data": None,
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
 
 
 @router.delete(
@@ -157,15 +211,26 @@ def delete_yatra(
     db: Session = Depends(get_db),
 ):
     """Delete yatra (admin only)."""
-    service = YatraService(db)
-    service.delete_yatra(yatra_id, current_user.id)
+    try:
+        service = YatraService(db)
+        service.delete_yatra(yatra_id, current_user.id)
 
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "success": True,
-            "status_code": status.HTTP_200_OK,
-            "message": "Yatra deleted successfully",
-            "data": None,
-        },
-    )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": "Yatra deleted successfully",
+                "data": None,
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
