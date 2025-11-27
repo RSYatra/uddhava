@@ -12,8 +12,10 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_admin
-from app.db.models import Devotee, YatraStatus
+from app.db.models import Devotee, PricingTemplateDetail, YatraStatus
 from app.db.session import get_db
+from app.schemas.payment_option import PaymentOptionOut
+from app.schemas.pricing_template import PricingTemplateOut
 from app.schemas.yatra import YatraCreate, YatraOut, YatraUpdate
 from app.services.yatra_service import YatraService
 
@@ -102,14 +104,14 @@ def list_yatras(
 @router.get(
     "/{yatra_id}",
     summary="Get Yatra Details",
-    description="Get detailed information about a specific yatra including registration stats. Public endpoint.",
+    description="Get detailed information about a specific yatra including pricing, payment options, and registration stats. Public endpoint.",
 )
 def get_yatra(
     yatra_id: int,
     include_stats: bool = Query(True, description="Include registration statistics"),
     db: Session = Depends(get_db),
 ):
-    """Get yatra details with optional statistics."""
+    """Get yatra details with pricing, payment options, and optional statistics."""
     try:
         service = YatraService(db)
         result = service.get_yatra(yatra_id, include_stats=include_stats)
@@ -119,6 +121,26 @@ def get_yatra(
 
         if include_stats and "stats" in result:
             yatra_data["registration_stats"] = result["stats"]
+
+        # Add pricing template details
+        pricing_template = service.get_yatra_pricing_template(yatra_id)
+        if pricing_template:
+            # Load pricing details
+            pricing_details = (
+                db.query(PricingTemplateDetail)
+                .filter(PricingTemplateDetail.template_id == pricing_template.id)
+                .all()
+            )
+            pricing_template.pricing_details = pricing_details
+            yatra_data["pricing_template"] = PricingTemplateOut.model_validate(
+                pricing_template
+            ).model_dump(mode="json")
+
+        # Add payment options
+        payment_options = service.get_yatra_payment_options(yatra_id)
+        yatra_data["payment_options"] = [
+            PaymentOptionOut.model_validate(p).model_dump(mode="json") for p in payment_options
+        ]
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,

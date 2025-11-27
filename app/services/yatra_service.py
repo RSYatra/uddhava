@@ -12,7 +12,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.yatra_validators import validate_yatra_dates
-from app.db.models import RegistrationStatus, Yatra, YatraStatus
+from app.db.models import (
+    PaymentOption,
+    PricingTemplate,
+    RegistrationStatus,
+    Yatra,
+    YatraPaymentOption,
+    YatraStatus,
+)
 from app.repositories.yatra_repository import YatraRepository
 from app.schemas.yatra import YatraCreate, YatraUpdate
 
@@ -30,18 +37,56 @@ class YatraService:
     def create_yatra(self, yatra_data: YatraCreate, admin_id: int) -> Yatra:
         """Create new yatra with validation."""
         try:
+            # Validate pricing template exists
+            pricing_template = (
+                self.db.query(PricingTemplate)
+                .filter(PricingTemplate.id == yatra_data.pricing_template_id)
+                .first()
+            )
+            if not pricing_template:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Pricing template with ID {yatra_data.pricing_template_id} not found",
+                )
+
+            # Validate payment options exist
+            payment_options = (
+                self.db.query(PaymentOption)
+                .filter(PaymentOption.id.in_(yatra_data.payment_option_ids))
+                .all()
+            )
+            if len(payment_options) != len(yatra_data.payment_option_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="One or more payment options not found",
+                )
+
             slug = self._generate_slug(yatra_data.name)
 
-            yatra_dict = yatra_data.model_dump()
+            yatra_dict = yatra_data.model_dump(exclude={"payment_option_ids"})
             yatra_dict["slug"] = slug
             yatra_dict["created_by"] = admin_id
 
             yatra = self.repository.create(yatra_dict)
+            self.db.flush()
+
+            # Create yatra payment option associations
+            for idx, payment_option_id in enumerate(yatra_data.payment_option_ids):
+                yatra_payment = YatraPaymentOption(
+                    yatra_id=yatra.id,
+                    payment_option_id=payment_option_id,
+                    display_order=idx,
+                )
+                self.db.add(yatra_payment)
+
             self.db.commit()
 
             logger.info(f"Yatra created: {yatra.id} by admin {admin_id}")
             return yatra
 
+        except HTTPException:
+            self.db.rollback()
+            raise
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to create yatra: {e}")
@@ -106,7 +151,48 @@ class YatraService:
                     detail="Cannot update yatra that has already started",
                 )
 
-            update_dict = yatra_data.model_dump(exclude_unset=True)
+            # Validate pricing template if provided
+            if yatra_data.pricing_template_id:
+                pricing_template = (
+                    self.db.query(PricingTemplate)
+                    .filter(PricingTemplate.id == yatra_data.pricing_template_id)
+                    .first()
+                )
+                if not pricing_template:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Pricing template with ID {yatra_data.pricing_template_id} not found",
+                    )
+
+            # Update payment options if provided
+            if yatra_data.payment_option_ids is not None:
+                # Validate payment options exist
+                payment_options = (
+                    self.db.query(PaymentOption)
+                    .filter(PaymentOption.id.in_(yatra_data.payment_option_ids))
+                    .all()
+                )
+                if len(payment_options) != len(yatra_data.payment_option_ids):
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="One or more payment options not found",
+                    )
+
+                # Delete existing payment option associations
+                self.db.query(YatraPaymentOption).filter(
+                    YatraPaymentOption.yatra_id == yatra_id
+                ).delete()
+
+                # Create new associations
+                for idx, payment_option_id in enumerate(yatra_data.payment_option_ids):
+                    yatra_payment = YatraPaymentOption(
+                        yatra_id=yatra_id,
+                        payment_option_id=payment_option_id,
+                        display_order=idx,
+                    )
+                    self.db.add(yatra_payment)
+
+            update_dict = yatra_data.model_dump(exclude_unset=True, exclude={"payment_option_ids"})
             yatra = self.repository.update(yatra, update_dict)
             self.db.commit()
 
@@ -114,6 +200,7 @@ class YatraService:
             return yatra
 
         except HTTPException:
+            self.db.rollback()
             raise
         except Exception as e:
             self.db.rollback()
@@ -197,3 +284,29 @@ class YatraService:
             counter += 1
 
         return slug
+
+    def get_yatra_pricing_template(self, yatra_id: int) -> PricingTemplate | None:
+        """Get pricing template for a yatra."""
+        yatra = self.repository.get_by_id(yatra_id)
+        if not yatra:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Yatra not found")
+
+        return (
+            self.db.query(PricingTemplate)
+            .filter(PricingTemplate.id == yatra.pricing_template_id)
+            .first()
+        )
+
+    def get_yatra_payment_options(self, yatra_id: int) -> list[PaymentOption]:
+        """Get payment options for a yatra."""
+        yatra = self.repository.get_by_id(yatra_id)
+        if not yatra:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Yatra not found")
+
+        return (
+            self.db.query(PaymentOption)
+            .join(YatraPaymentOption)
+            .filter(YatraPaymentOption.yatra_id == yatra_id)
+            .order_by(YatraPaymentOption.display_order)
+            .all()
+        )

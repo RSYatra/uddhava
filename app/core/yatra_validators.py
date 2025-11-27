@@ -50,67 +50,6 @@ def validate_yatra_dates(func: Callable) -> Callable:
     return wrapper
 
 
-def validate_registration_dates(func: Callable) -> Callable:
-    """
-    Validate registration travel dates.
-
-    Ensures arrival_datetime < departure_datetime
-    """
-
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        reg_data = kwargs.get("reg_data") or (args[2] if len(args) > 2 else None)
-
-        if not reg_data:
-            return func(*args, **kwargs)
-
-        if reg_data.arrival_datetime >= reg_data.departure_datetime:
-            raise YatraValidationError("Arrival must be before departure")
-
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
-def validate_registration_capacity(func: Callable) -> Callable:
-    """
-    Validate number of members and accompanying members count.
-
-    Ensures:
-    - 1 <= number_of_members <= 20
-    - accompanying_members count matches number_of_members - 1
-    """
-
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        reg_data = kwargs.get("reg_data") or (args[2] if len(args) > 2 else None)
-
-        if not reg_data:
-            return func(*args, **kwargs)
-
-        if reg_data.number_of_members < 1:
-            raise YatraValidationError("At least one member required")
-
-        if reg_data.number_of_members > 20:
-            raise YatraValidationError("Maximum 20 members per registration")
-
-        # Validate accompanying members count
-        expected_accompanying = reg_data.number_of_members - 1
-        actual_accompanying = (
-            len(reg_data.accompanying_members) if reg_data.accompanying_members else 0
-        )
-
-        if actual_accompanying != expected_accompanying:
-            raise YatraValidationError(
-                f"Number of accompanying members ({actual_accompanying}) must match "
-                f"total members - 1 ({expected_accompanying})"
-            )
-
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
 def validate_status_transition(allowed_transitions: dict) -> Callable:
     """
     Decorator factory for status transition validation.
