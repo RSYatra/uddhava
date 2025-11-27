@@ -35,17 +35,6 @@ class RegistrationRepository:
             query = query.filter(YatraRegistration.deleted_at.is_(None))
         return query.first()
 
-    def get_by_registration_number(self, reg_number: str) -> YatraRegistration | None:
-        """Get registration by registration number."""
-        return (
-            self.db.query(YatraRegistration)
-            .filter(
-                YatraRegistration.registration_number == reg_number,
-                YatraRegistration.deleted_at.is_(None),
-            )
-            .first()
-        )
-
     def check_duplicate_registration(self, yatra_id: int, devotee_id: int) -> bool:
         """Check if devotee already has active registration for yatra."""
         active_statuses = [

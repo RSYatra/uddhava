@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
-from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import (
     centers,
@@ -37,14 +36,9 @@ from app.core.auth_middleware import (
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.core.middleware import (
-    ApplicationError,
-    AuthenticationError,
-    AuthorizationError,
-    FileUploadError,
     LoggingMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
-    ValidationError,
 )
 from app.core.openapi import get_custom_openapi
 from app.db.models import Base
@@ -92,20 +86,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         logger.info(f"Database URL: {db_info}")
     except Exception:
         logger.info("Database configuration loaded")
-
-    # Check for admin user existence
-    try:
-        from app.utils.admin_utils import ensure_admin_exists
-
-        if ensure_admin_exists():
-            logger.info("Admin user verification completed")
-        else:
-            logger.warning(
-                "No admin users found. Create one using: "
-                "promote_user_to_admin() or create_admin_user()"
-            )
-    except Exception as e:
-        logger.warning(f"Admin user check failed: {e}")
 
     yield
 
@@ -207,15 +187,6 @@ def setup_middleware(app: FastAPI) -> None:
             + ([settings.app_host] if hasattr(settings, "app_host") else []),
         )
 
-    # Session middleware for authentication
-    app.add_middleware(
-        SessionMiddleware,
-        secret_key=settings.jwt_secret_key,
-        max_age=86400,  # 24 hours
-        same_site="lax",
-        https_only=settings.is_production,
-    )
-
 
 def setup_exception_handlers(app: FastAPI) -> None:
     """Configure application exception handlers."""
@@ -282,73 +253,6 @@ def setup_exception_handlers(app: FastAPI) -> None:
                 "detail": "Internal server error",
                 "error_type": "database_error",
                 "status_code": 500,
-            },
-        )
-
-    @app.exception_handler(ApplicationError)
-    async def application_exception_handler(request: Request, exc: ApplicationError):
-        """Handle custom application errors."""
-        logger.warning(f"Application error on {request.method} {request.url.path}: {exc.message}")
-        return JSONResponse(
-            status_code=400,
-            content={
-                "detail": exc.message,
-                "error_code": exc.error_code,
-                "status_code": 400,
-            },
-        )
-
-    @app.exception_handler(AuthenticationError)
-    async def authentication_exception_handler(request: Request, exc: AuthenticationError):
-        """Handle authentication errors."""
-        logger.warning(
-            f"Authentication error on {request.method} {request.url.path}: {exc.message}"
-        )
-        return JSONResponse(
-            status_code=401,
-            content={
-                "detail": exc.message,
-                "error_code": exc.error_code,
-                "status_code": 401,
-            },
-        )
-
-    @app.exception_handler(AuthorizationError)
-    async def authorization_exception_handler(request: Request, exc: AuthorizationError):
-        """Handle authorization errors."""
-        logger.warning(f"Authorization error on {request.method} {request.url.path}: {exc.message}")
-        return JSONResponse(
-            status_code=403,
-            content={
-                "detail": exc.message,
-                "error_code": exc.error_code,
-                "status_code": 403,
-            },
-        )
-
-    @app.exception_handler(ValidationError)
-    async def validation_exception_handler(request: Request, exc: ValidationError):
-        """Handle custom validation errors."""
-        logger.warning(f"Validation error on {request.method} {request.url.path}: {exc.message}")
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": exc.message,
-                "error_code": exc.error_code,
-                "status_code": 422,
-            },
-        )
-
-    @app.exception_handler(FileUploadError)
-    async def file_upload_exception_handler(request: Request, exc: FileUploadError):
-        """Handle file upload errors."""
-        logger.warning(f"File upload error on {request.method} {request.url.path}: {exc.message}")
-        return JSONResponse(
-            status_code=400,
-            content={
-                "detail": exc.message,
-                "error_code": exc.error_code,
-                "status_code": 400,
             },
         )
 
