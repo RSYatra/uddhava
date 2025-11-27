@@ -15,7 +15,6 @@ from . import (
     pricing_templates,
     spiritual_masters,
     yatra_registrations,
-    yatra_registrations_v2,
     yatras,
 )
 
@@ -29,6 +28,5 @@ __all__ = [
     "pricing_templates",
     "spiritual_masters",
     "yatra_registrations",
-    "yatra_registrations_v2",
     "yatras",
 ]

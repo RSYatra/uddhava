@@ -28,7 +28,6 @@ from app.api.routes import (
     pricing_templates,
     spiritual_masters,
     yatra_registrations,
-    yatra_registrations_v2,
     yatras,
 )
 from app.core.auth_middleware import (
@@ -300,7 +299,6 @@ def register_routes(app: FastAPI) -> None:
     # Yatra management routes
     app.include_router(yatras.router, prefix="/api/v1")
     app.include_router(yatra_registrations.router, prefix="/api/v1")
-    app.include_router(yatra_registrations_v2.router, prefix="/api/v1")
 
     # Root endpoint - Landing page
     @app.get("/", tags=["Root"], include_in_schema=False)

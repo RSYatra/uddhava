@@ -38,7 +38,6 @@ class RegistrationCreate(BaseModel):
 class RegistrationUpdate(BaseModel):
     """Schema for updating a registration (only allowed in PENDING status)."""
 
-    payment_screenshot_path: str | None = None
     payment_reference: str | None = None
     payment_method: str | None = None
 

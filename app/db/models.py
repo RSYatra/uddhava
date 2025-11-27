@@ -85,16 +85,6 @@ class RegistrationStatus(str, Enum):
     COMPLETED = "COMPLETED"
 
 
-class RoomPreference(str, Enum):
-    """Room preference enumeration."""
-
-    SINGLE = "SINGLE"
-    DOUBLE_SHARING = "DOUBLE_SHARING"
-    TRIPLE_SHARING = "TRIPLE_SHARING"
-    QUAD_SHARING = "QUAD_SHARING"
-    DORMITORY = "DORMITORY"
-
-
 class RoomCategory(str, Enum):
     """Room category enumeration for yatra pricing."""
 
