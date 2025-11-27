@@ -84,11 +84,3 @@ class YatraOut(YatraBase):
     updated_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class YatraWithStats(YatraOut):
-    """Schema for yatra with registration statistics."""
-
-    total_registrations: int
-    confirmed_registrations: int
-    is_registration_open: bool

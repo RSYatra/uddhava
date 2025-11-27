@@ -169,16 +169,6 @@ class Settings(BaseSettings):
         """Get max total upload size in bytes."""
         return self.max_upload_size_mb * 1024 * 1024
 
-    @property
-    def max_file_size_bytes(self) -> int:
-        """Get max individual file size in bytes."""
-        return self.max_file_size_mb * 1024 * 1024
-
-    @property
-    def all_allowed_extensions(self) -> list[str]:
-        """Get all allowed file extensions."""
-        return self.allowed_image_extensions + self.allowed_document_extensions
-
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
