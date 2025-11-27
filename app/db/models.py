@@ -100,7 +100,6 @@ class Devotee(Base):
 
     This model captures all essential information about devotees including
     personal details, spiritual journey, and ISKCON-specific information.
-    Optimized for 100K users with strategic indexing.
     """
 
     __tablename__ = "devotees"

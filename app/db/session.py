@@ -125,36 +125,11 @@ def with_db_retry(max_retries=None, retry_delay=None, backoff=None):
     return decorator
 
 
-# Event listeners for connection monitoring
+# Event listeners for critical connection monitoring
 @event.listens_for(engine, "connect")
 def connect_handler(dbapi_connection, connection_record):
     """Log successful database connections."""
     logger.info("New database connection established")
-
-
-@event.listens_for(engine, "checkout")
-def checkout_handler(dbapi_connection, connection_record, connection_proxy):
-    """Verify connection is alive before checkout."""
-    # pool_pre_ping handles this, but we log it
-    logger.debug("Connection checked out from pool")
-
-
-@event.listens_for(engine, "checkin")
-def checkin_handler(dbapi_connection, connection_record):
-    """Log connection return to pool."""
-    logger.debug("Connection returned to pool")
-
-
-@event.listens_for(engine, "close")
-def close_handler(dbapi_connection, connection_record):
-    """Log connection closure."""
-    logger.debug("Database connection closed")
-
-
-@event.listens_for(engine, "close_detached")
-def close_detached_handler(dbapi_connection, connection_record):
-    """Log detached connection closure."""
-    logger.debug("Detached database connection closed")
 
 
 @event.listens_for(engine, "invalidate")
