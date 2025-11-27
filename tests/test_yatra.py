@@ -84,6 +84,27 @@ def sample_yatra(admin_user):
     """Create sample yatra for testing."""
     db = TestingSessionLocal()
     today = date.today()
+
+    # Create a pricing template first
+    from app.db.models import PricingTemplate, PricingTemplateDetail, RoomCategory
+
+    pricing_template = PricingTemplate(
+        name="Test Pricing Template",
+        description="Test pricing",
+        is_active=True,
+    )
+    db.add(pricing_template)
+    db.flush()
+
+    # Add pricing details for all room categories
+    for category in RoomCategory:
+        detail = PricingTemplateDetail(
+            template_id=pricing_template.id,
+            room_category=category,
+            price_per_person=10000,
+        )
+        db.add(detail)
+
     yatra = Yatra(
         name="Test Yatra to Vrindavan",
         slug="test-yatra-vrindavan",
@@ -93,7 +114,7 @@ def sample_yatra(admin_user):
         end_date=today + timedelta(days=67),
         registration_start_date=today,
         registration_deadline=today + timedelta(days=30),
-        price_per_person=10000,
+        pricing_template_id=pricing_template.id,
         status=YatraStatus.UPCOMING,
         created_by=admin_user.id,
     )

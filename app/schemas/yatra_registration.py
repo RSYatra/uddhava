@@ -4,89 +4,42 @@ Pydantic schemas for yatra registration management.
 This module contains schemas for registration API request/response validation.
 """
 
-from datetime import date, datetime
-from typing import Any
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.db.models import Gender, RegistrationStatus, RoomPreference
-
-
-class AccompanyingMember(BaseModel):
-    """Schema for accompanying member information."""
-
-    name: str = Field(..., min_length=2, max_length=127)
-    date_of_birth: date
-    gender: Gender
-    relation: str | None = Field(None, max_length=50)
-
-    @field_validator("date_of_birth")
-    @classmethod
-    def validate_age(cls, v: date) -> date:
-        age = (date.today() - v).days / 365.25
-        if age < 5:
-            raise ValueError("Children below 5 years should not be included")
-        return v
+from app.db.models import RegistrationStatus
+from app.schemas.payment_option import PaymentOptionOut
+from app.schemas.yatra_member import YatraMemberCreate, YatraMemberOut
 
 
 class RegistrationCreate(BaseModel):
-    """Schema for creating a new registration."""
+    """Schema for creating a new group registration."""
 
     yatra_id: int
-    arrival_datetime: datetime
-    departure_datetime: datetime
-    arrival_mode: str | None = Field(None, max_length=50)
-    departure_mode: str | None = Field(None, max_length=50)
-    room_preference: RoomPreference
-    ac_preference: bool = False
-    floor_preference: str | None = Field(None, max_length=50)
-    special_room_requests: str | None = Field(None, max_length=500)
-    number_of_members: int = Field(..., ge=1, le=20)
-    accompanying_members: list[AccompanyingMember] = []
-    user_remarks: str | None = Field(None, max_length=1000)
-    emergency_contact_name: str | None = Field(None, max_length=127)
-    emergency_contact_number: str | None = Field(None, max_length=20)
-    dietary_requirements: str | None = Field(None, max_length=500)
-    medical_conditions: str | None = Field(None, max_length=500)
+    members: list[YatraMemberCreate] = Field(..., min_length=1)
 
-    @field_validator("accompanying_members")
+    @field_validator("members")
     @classmethod
-    def validate_member_count(
-        cls, v: list[AccompanyingMember], info: Any
-    ) -> list[AccompanyingMember]:
-        if "number_of_members" in info.data:
-            expected = info.data["number_of_members"] - 1
-            if len(v) != expected:
-                raise ValueError(
-                    f"Number of accompanying members ({len(v)}) must match "
-                    f"number_of_members - 1 ({expected})"
-                )
-        return v
+    def validate_primary_registrant(cls, v: list[YatraMemberCreate]) -> list[YatraMemberCreate]:
+        """Ensure exactly one primary registrant exists."""
+        primary_count = sum(1 for member in v if member.is_primary_registrant)
+        if primary_count != 1:
+            raise ValueError("Exactly one member must be marked as primary registrant")
 
-    @field_validator("departure_datetime")
-    @classmethod
-    def validate_departure_after_arrival(cls, v: datetime, info: Any) -> datetime:
-        if "arrival_datetime" in info.data and v <= info.data["arrival_datetime"]:
-            raise ValueError("departure_datetime must be after arrival_datetime")
+        # Ensure primary registrant has devotee_id
+        primary = next(m for m in v if m.is_primary_registrant)
+        if not primary.devotee_id:
+            raise ValueError("Primary registrant must be a registered user (devotee_id required)")
+
         return v
 
 
 class RegistrationUpdate(BaseModel):
     """Schema for updating a registration (only allowed in PENDING status)."""
 
-    arrival_datetime: datetime | None = None
-    departure_datetime: datetime | None = None
-    arrival_mode: str | None = Field(None, max_length=50)
-    departure_mode: str | None = Field(None, max_length=50)
-    room_preference: RoomPreference | None = None
-    ac_preference: bool | None = None
-    floor_preference: str | None = None
-    special_room_requests: str | None = None
-    user_remarks: str | None = None
-    emergency_contact_name: str | None = None
-    emergency_contact_number: str | None = None
-    dietary_requirements: str | None = None
-    medical_conditions: str | None = None
+    payment_reference: str | None = None
+    payment_method: str | None = None
 
 
 class RegistrationOut(BaseModel):
@@ -96,16 +49,8 @@ class RegistrationOut(BaseModel):
     registration_number: str
     yatra_id: int
     devotee_id: int
-    arrival_datetime: datetime
-    departure_datetime: datetime
-    arrival_mode: str | None
-    departure_mode: str | None
-    room_preference: RoomPreference
-    ac_preference: bool
-    floor_preference: str | None
-    special_room_requests: str | None
-    number_of_members: int
-    accompanying_members: list[dict[str, Any]] | None
+    group_id: str
+    is_group_lead: bool
     total_amount: int
     payment_screenshot_path: str | None
     payment_reference: str | None
@@ -113,16 +58,22 @@ class RegistrationOut(BaseModel):
     payment_method: str | None
     status: RegistrationStatus
     admin_remarks: str | None
-    user_remarks: str | None
-    emergency_contact_name: str | None
-    emergency_contact_number: str | None
-    dietary_requirements: str | None
-    medical_conditions: str | None
+    internal_notes: str | None
     created_at: datetime
     updated_at: datetime | None
     submitted_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GroupRegistrationOut(BaseModel):
+    """Schema for group registration response with members."""
+
+    group_id: str
+    registrations: list[RegistrationOut]
+    members: list[YatraMemberOut]
+    total_amount: int
+    payment_options: list[PaymentOptionOut] = []
 
 
 class StatusUpdateRequest(BaseModel):
