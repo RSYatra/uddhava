@@ -181,6 +181,11 @@ def upgrade() -> None:
             {"template_id": template_id}
         )
 
+    # Make pricing_template_id NOT NULL after populating data
+    op.alter_column('yatras', 'pricing_template_id',
+                    existing_type=sa.Integer(),
+                    nullable=False)
+
     # Create foreign key constraint
     op.create_foreign_key('fk_yatras_pricing_template', 'yatras', 'pricing_templates', ['pricing_template_id'], ['id'])
     op.create_index('ix_yatras_pricing_template_id', 'yatras', ['pricing_template_id'])
