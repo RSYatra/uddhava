@@ -1,7 +1,8 @@
 """
-Service for payment option management.
+Business logic service for payment option management.
 
-This module handles CRUD operations for payment options.
+This service handles CRUD operations for reusable payment options
+that can be associated with multiple yatras.
 """
 
 import logging
@@ -9,193 +10,248 @@ import logging
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.models import PaymentOption
+from app.db.models import PaymentOption, YatraPaymentOption
 from app.schemas.payment_option import PaymentOptionCreate, PaymentOptionUpdate
 
 logger = logging.getLogger(__name__)
 
 
 class PaymentOptionService:
-    """Service for managing payment options."""
+    """Service for payment option business logic."""
 
     def __init__(self, db: Session):
+        """Initialize service with database session."""
         self.db = db
 
-    def create_payment_option(self, payment_data: PaymentOptionCreate) -> PaymentOption:
+    def create_payment_option(self, option_data: PaymentOptionCreate) -> PaymentOption:
         """
         Create a new payment option.
 
         Args:
-            payment_data: Payment option creation data
+            option_data: Payment option creation data
 
         Returns:
-            Created payment option
+            Created PaymentOption object
 
         Raises:
-            HTTPException: If payment option name already exists
+            HTTPException: For validation errors or system failures
         """
-        # Check if name already exists
-        existing = (
-            self.db.query(PaymentOption).filter(PaymentOption.name == payment_data.name).first()
-        )
-        if existing:
+        try:
+            payment_option = PaymentOption(
+                name=option_data.name,
+                method=option_data.method,
+                upi_id=option_data.upi_id,
+                account_number=option_data.account_number,
+                bank_name=option_data.bank_name,
+                ifsc_code=option_data.ifsc_code,
+                account_holder=option_data.account_holder,
+                branch=option_data.branch,
+                qr_code_url=option_data.qr_code_url,
+                instructions=option_data.instructions,
+                is_active=True,  # Default to active
+            )
+            self.db.add(payment_option)
+            self.db.commit()
+            self.db.refresh(payment_option)
+
+            logger.info(f"Created payment option: {payment_option.id} - {payment_option.name}")
+            return payment_option
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to create payment option: {e}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Payment option with name '{payment_data.name}' already exists",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create payment option: {str(e)}",
             )
 
-        # Create payment option
-        payment_option = PaymentOption(
-            name=payment_data.name,
-            payment_method=payment_data.payment_method,
-            bank_account_number=payment_data.bank_account_number,
-            ifsc_code=payment_data.ifsc_code,
-            bank_name=payment_data.bank_name,
-            branch_name=payment_data.branch_name,
-            account_holder_name=payment_data.account_holder_name,
-            account_type=payment_data.account_type,
-            upi_id=payment_data.upi_id,
-            upi_phone_number=payment_data.upi_phone_number,
-            qr_code_path=payment_data.qr_code_path,
-            notes=payment_data.notes,
-            is_active=True,
-        )
-        self.db.add(payment_option)
-        self.db.commit()
-        self.db.refresh(payment_option)
-        logger.info(f"Created payment option: {payment_option.name} (ID: {payment_option.id})")
-        return payment_option
-
-    def get_payment_option(self, payment_option_id: int) -> PaymentOption:
+    def get_payment_option(self, option_id: int) -> PaymentOption:
         """
-        Get a payment option by ID.
+        Get payment option by ID.
 
         Args:
-            payment_option_id: Payment option ID
+            option_id: Payment option ID
 
         Returns:
-            Payment option
+            PaymentOption object
 
         Raises:
             HTTPException: If payment option not found
         """
-        payment_option = (
-            self.db.query(PaymentOption).filter(PaymentOption.id == payment_option_id).first()
-        )
+        payment_option = self.db.query(PaymentOption).filter(PaymentOption.id == option_id).first()
+
         if not payment_option:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Payment option with ID {payment_option_id} not found",
+                detail="Payment option not found",
             )
+
         return payment_option
 
-    def list_payment_options(self, active_only: bool = True) -> list[PaymentOption]:
+    def list_payment_options(self, active_only: bool = False) -> list[PaymentOption]:
         """
         List all payment options.
 
         Args:
-            active_only: If True, return only active payment options
+            active_only: If True, only return active payment options
 
         Returns:
-            List of payment options
+            List of PaymentOption objects
         """
         query = self.db.query(PaymentOption)
+
         if active_only:
-            query = query.filter(PaymentOption.is_active == True)  # noqa: E712
-        return query.all()
+            query = query.filter(PaymentOption.is_active)
+
+        return query.order_by(PaymentOption.name).all()
 
     def update_payment_option(
-        self, payment_option_id: int, payment_data: PaymentOptionUpdate
+        self, option_id: int, update_data: PaymentOptionUpdate
     ) -> PaymentOption:
         """
-        Update a payment option.
+        Update payment option.
 
         Args:
-            payment_option_id: Payment option ID
-            payment_data: Updated payment option data
+            option_id: Payment option ID
+            update_data: Update data
 
         Returns:
-            Updated payment option
+            Updated PaymentOption object
 
         Raises:
-            HTTPException: If payment option not found or name conflict
+            HTTPException: If payment option not found or update fails
         """
-        payment_option = self.get_payment_option(payment_option_id)
+        payment_option = self.get_payment_option(option_id)
 
-        # Check name uniqueness if name is being updated
-        if payment_data.name and payment_data.name != payment_option.name:
-            existing = (
-                self.db.query(PaymentOption)
-                .filter(
-                    PaymentOption.name == payment_data.name,
-                    PaymentOption.id != payment_option_id,
-                )
-                .first()
+        try:
+            update_dict = update_data.model_dump(exclude_unset=True)
+            for key, value in update_dict.items():
+                if key == "payment_method":
+                    payment_option.method = value
+                else:
+                    setattr(payment_option, key, value)
+
+            self.db.commit()
+            self.db.refresh(payment_option)
+
+            logger.info(f"Updated payment option: {payment_option.id}")
+            return payment_option
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to update payment option: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update payment option: {str(e)}",
             )
-            if existing:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Payment option with name '{payment_data.name}' already exists",
-                )
 
-        # Update fields
-        if payment_data.name:
-            payment_option.name = payment_data.name
-        if payment_data.is_active is not None:
-            payment_option.is_active = payment_data.is_active
-        if payment_data.bank_account_number is not None:
-            payment_option.bank_account_number = payment_data.bank_account_number
-        if payment_data.ifsc_code is not None:
-            payment_option.ifsc_code = payment_data.ifsc_code
-        if payment_data.bank_name is not None:
-            payment_option.bank_name = payment_data.bank_name
-        if payment_data.branch_name is not None:
-            payment_option.branch_name = payment_data.branch_name
-        if payment_data.account_holder_name is not None:
-            payment_option.account_holder_name = payment_data.account_holder_name
-        if payment_data.account_type is not None:
-            payment_option.account_type = payment_data.account_type
-        if payment_data.upi_id is not None:
-            payment_option.upi_id = payment_data.upi_id
-        if payment_data.upi_phone_number is not None:
-            payment_option.upi_phone_number = payment_data.upi_phone_number
-        if payment_data.qr_code_path is not None:
-            payment_option.qr_code_path = payment_data.qr_code_path
-        if payment_data.notes is not None:
-            payment_option.notes = payment_data.notes
-
-        self.db.commit()
-        self.db.refresh(payment_option)
-        logger.info(f"Updated payment option: {payment_option.name} (ID: {payment_option.id})")
-        return payment_option
-
-    def delete_payment_option(self, payment_option_id: int) -> None:
+    def delete_payment_option(self, option_id: int) -> None:
         """
-        Delete a payment option.
+        Delete payment option.
 
         Args:
-            payment_option_id: Payment option ID
+            option_id: Payment option ID
 
         Raises:
-            HTTPException: If payment option not found or in use by yatras
+            HTTPException: If payment option not found or deletion fails
         """
-        payment_option = self.get_payment_option(payment_option_id)
+        payment_option = self.get_payment_option(option_id)
 
-        # Check if payment option is in use
-        from app.db.models import YatraPaymentOption
+        try:
+            self.db.delete(payment_option)
+            self.db.commit()
 
-        usage_count = (
-            self.db.query(YatraPaymentOption)
-            .filter(YatraPaymentOption.payment_option_id == payment_option_id)
-            .count()
-        )
-        if usage_count > 0:
+            logger.info(f"Deleted payment option: {option_id}")
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to delete payment option: {e}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot delete payment option. It is used by {usage_count} yatra(s)",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete payment option: {str(e)}",
             )
 
-        # Delete payment option
-        self.db.delete(payment_option)
-        self.db.commit()
-        logger.info(f"Deleted payment option: {payment_option.name} (ID: {payment_option.id})")
+    def add_payment_option_to_yatra(self, yatra_id: int, option_id: int) -> None:
+        """
+        Associate a payment option with a yatra.
+
+        Args:
+            yatra_id: Yatra ID
+            option_id: Payment option ID
+
+        Raises:
+            HTTPException: If association already exists or creation fails
+        """
+        # Check if association already exists
+        existing = (
+            self.db.query(YatraPaymentOption)
+            .filter(
+                YatraPaymentOption.yatra_id == yatra_id,
+                YatraPaymentOption.payment_option_id == option_id,
+            )
+            .first()
+        )
+
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Payment option already associated with this yatra",
+            )
+
+        try:
+            yatra_payment_option = YatraPaymentOption(
+                yatra_id=yatra_id,
+                payment_option_id=option_id,
+            )
+            self.db.add(yatra_payment_option)
+            self.db.commit()
+
+            logger.info(f"Added payment option {option_id} to yatra {yatra_id}")
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to add payment option to yatra: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to add payment option to yatra: {str(e)}",
+            )
+
+    def remove_payment_option_from_yatra(self, yatra_id: int, option_id: int) -> None:
+        """
+        Remove payment option association from a yatra.
+
+        Args:
+            yatra_id: Yatra ID
+            option_id: Payment option ID
+
+        Raises:
+            HTTPException: If association not found or removal fails
+        """
+        yatra_payment_option = (
+            self.db.query(YatraPaymentOption)
+            .filter(
+                YatraPaymentOption.yatra_id == yatra_id,
+                YatraPaymentOption.payment_option_id == option_id,
+            )
+            .first()
+        )
+
+        if not yatra_payment_option:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Payment option not associated with this yatra",
+            )
+
+        try:
+            self.db.delete(yatra_payment_option)
+            self.db.commit()
+
+            logger.info(f"Removed payment option {option_id} from yatra {yatra_id}")
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to remove payment option from yatra: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to remove payment option from yatra: {str(e)}",
+            )

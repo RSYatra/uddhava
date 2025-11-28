@@ -8,14 +8,14 @@ Public endpoints for listing and viewing yatras.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_admin
-from app.db.models import Devotee, PricingTemplateDetail, YatraStatus
+from app.core.security import get_current_user
+from app.db.models import Devotee
 from app.db.session import get_db
 from app.schemas.payment_option import PaymentOptionOut
-from app.schemas.pricing_template import PricingTemplateOut
+from app.schemas.room_category import RoomCategoryOut
 from app.schemas.yatra import YatraCreate, YatraOut, YatraUpdate
 from app.services.yatra_service import YatraService
 
@@ -24,10 +24,18 @@ router = APIRouter(prefix="/yatras", tags=["Yatras"])
 
 @router.post(
     "",
-    response_model=YatraOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create Yatra (Admin)",
-    description="Create a new yatra. Admin access required.",
+    description="""
+Create a new yatra.
+
+**AUTHENTICATION:**
+- Requires admin role
+
+**NOTE:**
+- Room categories and pricing are added separately via `/yatras/{id}/room-categories` endpoint
+- Payment options are linked separately
+    """,
 )
 def create_yatra(
     yatra_data: YatraCreate,
@@ -37,7 +45,7 @@ def create_yatra(
     """Create new yatra (admin only)."""
     try:
         service = YatraService(db)
-        yatra = service.create_yatra(yatra_data, current_user.id)
+        yatra = service.create_yatra(yatra_data)
 
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
@@ -63,83 +71,94 @@ def create_yatra(
 @router.get(
     "",
     summary="List Yatras",
-    description="List all yatras with optional filters. Public endpoint.",
+    description="""
+List all yatras with optional filters.
+
+**QUERY PARAMETERS:**
+- active_only (boolean, default: true): Show only active yatras
+- page (integer, default: 0): Page offset for pagination
+- limit (integer, default: 100, max: 100): Items per page
+
+**RESPONSE:**
+Returns list of yatras sorted by start date (newest first).
+
+**AUTHENTICATION:**
+- Requires authentication (any logged-in user)
+    """,
 )
 def list_yatras(
-    status_filter: YatraStatus | None = Query(None, description="Filter by status"),
-    upcoming_only: bool = Query(False, description="Show only upcoming yatras"),
-    featured_only: bool = Query(False, description="Show only featured yatras"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    active_only: bool = Query(True, description="Show only active yatras"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=100, description="Maximum records to return"),
+    current_user: Devotee = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """List yatras with filters and pagination."""
-    service = YatraService(db)
-    result = service.list_yatras(
-        status_filter=status_filter,
-        upcoming_only=upcoming_only,
-        featured_only=featured_only,
-        page=page,
-        page_size=page_size,
-    )
+    try:
+        service = YatraService(db)
+        yatras = service.list_yatras(skip=skip, limit=limit, active_only=active_only)
 
-    yatras_out = [YatraOut.model_validate(y).model_dump(mode="json") for y in result["yatras"]]
-
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "success": True,
-            "status_code": status.HTTP_200_OK,
-            "message": f"Found {len(yatras_out)} yatra(s)",
-            "data": {
-                "yatras": yatras_out,
-                "page": result["page"],
-                "page_size": result["page_size"],
-                "has_more": result["has_more"],
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": "Yatras retrieved successfully",
+                "data": {
+                    "total": len(yatras),
+                    "yatras": [YatraOut.model_validate(y).model_dump(mode="json") for y in yatras],
+                },
             },
-        },
-    )
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message": f"Failed to retrieve yatras: {str(e)}",
+                "data": None,
+            },
+        )
 
 
 @router.get(
     "/{yatra_id}",
     summary="Get Yatra Details",
-    description="Get detailed information about a specific yatra including pricing, payment options, and registration stats. Public endpoint.",
+    description="""
+Get detailed information about a specific yatra including room categories and payment options.
+
+**PATH PARAMETERS:**
+- yatra_id (integer): ID of the yatra
+
+**RESPONSE:**
+Returns yatra details with:
+- Basic yatra information
+- List of available room categories with pricing
+- List of available payment options
+
+**AUTHENTICATION:**
+- Requires authentication (any logged-in user)
+    """,
 )
 def get_yatra(
     yatra_id: int,
-    include_stats: bool = Query(True, description="Include registration statistics"),
+    current_user: Devotee = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get yatra details with pricing, payment options, and optional statistics."""
+    """Get yatra details with room categories and payment options."""
     try:
         service = YatraService(db)
-        result = service.get_yatra(yatra_id, include_stats=include_stats)
+        result = service.get_yatra_with_details(yatra_id)
 
         yatra_data = YatraOut.model_validate(result["yatra"]).model_dump(mode="json")
-        yatra_data["is_registration_open"] = result["is_registration_open"]
-
-        if include_stats and "stats" in result:
-            yatra_data["registration_stats"] = result["stats"]
-
-        # Add pricing template details
-        pricing_template = service.get_yatra_pricing_template(yatra_id)
-        if pricing_template:
-            # Load pricing details
-            pricing_details = (
-                db.query(PricingTemplateDetail)
-                .filter(PricingTemplateDetail.template_id == pricing_template.id)
-                .all()
-            )
-            pricing_template.pricing_details = pricing_details
-            yatra_data["pricing_template"] = PricingTemplateOut.model_validate(
-                pricing_template
-            ).model_dump(mode="json")
-
-        # Add payment options
-        payment_options = service.get_yatra_payment_options(yatra_id)
+        yatra_data["room_categories"] = [
+            RoomCategoryOut.model_validate(rc).model_dump(mode="json")
+            for rc in result["room_categories"]
+        ]
         yatra_data["payment_options"] = [
-            PaymentOptionOut.model_validate(p).model_dump(mode="json") for p in payment_options
+            PaymentOptionOut.model_validate(po).model_dump(mode="json")
+            for po in result["payment_options"]
         ]
 
         return JSONResponse(
@@ -151,14 +170,86 @@ def get_yatra(
                 "data": yatra_data,
             },
         )
-    except ValidationError as e:
+    except HTTPException as e:
         return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=e.status_code,
             content={
                 "success": False,
-                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "message": f"Yatra data validation failed: {str(e.errors()[0]['msg'])}",
+                "status_code": e.status_code,
+                "message": e.detail,
                 "data": None,
+            },
+        )
+
+
+@router.get(
+    "/{yatra_id}/payment-options",
+    summary="Get Payment Options with Aggregation",
+    description="""
+Get all payment options for a yatra with aggregated metadata.
+
+**PATH PARAMETERS:**
+- yatra_id (integer): ID of the yatra
+
+**RESPONSE:**
+Returns:
+- Yatra ID and name
+- Total number of payment options
+- Aggregated summary by payment method (count of UPI, Bank Transfer, QR Code, etc.)
+- Detailed list of all payment options
+
+**AUTHENTICATION:**
+- Requires authentication (any logged-in user)
+
+**EXAMPLE RESPONSE:**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Payment options retrieved successfully",
+  "data": {
+    "yatra_id": 1,
+    "yatra_name": "Vrindavan Parikrama 2026",
+    "total_options": 5,
+    "summary": {
+      "total": 5,
+      "by_method": {
+        "UPI": 2,
+        "BANK_TRANSFER": 2,
+        "QR_CODE": 1,
+        "CASH": 0,
+        "CHEQUE": 0
+      }
+    },
+    "payment_options": [...]
+  }
+}
+```
+    """,
+)
+def get_payment_options_with_aggregation(
+    yatra_id: int,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get payment options for a yatra with aggregated metadata."""
+    try:
+        service = YatraService(db)
+        result = service.get_payment_options_with_aggregation(yatra_id)
+
+        # Convert payment options to dict
+        result["payment_options"] = [
+            PaymentOptionOut.model_validate(po).model_dump(mode="json")
+            for po in result["payment_options"]
+        ]
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": "Payment options retrieved successfully",
+                "data": result,
             },
         )
     except HTTPException as e:
@@ -175,9 +266,20 @@ def get_yatra(
 
 @router.put(
     "/{yatra_id}",
-    response_model=YatraOut,
     summary="Update Yatra (Admin)",
-    description="Update yatra details. Admin access required.",
+    description="""
+Update yatra details.
+
+**PATH PARAMETERS:**
+- yatra_id (integer): ID of the yatra
+
+**AUTHENTICATION:**
+- Requires admin role
+
+**NOTE:**
+- Cannot update yatra that has already started
+- All fields are optional
+    """,
 )
 def update_yatra(
     yatra_id: int,
@@ -188,7 +290,7 @@ def update_yatra(
     """Update yatra (admin only)."""
     try:
         service = YatraService(db)
-        yatra = service.update_yatra(yatra_id, yatra_data, current_user.id)
+        yatra = service.update_yatra(yatra_id, yatra_data)
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -197,16 +299,6 @@ def update_yatra(
                 "status_code": status.HTTP_200_OK,
                 "message": "Yatra updated successfully",
                 "data": YatraOut.model_validate(yatra).model_dump(mode="json"),
-            },
-        )
-    except ValidationError as e:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "success": False,
-                "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": f"Invalid yatra data: {str(e.errors()[0]['msg'])}",
-                "data": None,
             },
         )
     except HTTPException as e:
@@ -223,9 +315,20 @@ def update_yatra(
 
 @router.delete(
     "/{yatra_id}",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete Yatra (Admin)",
-    description="Soft delete a yatra. Admin access required. Cannot delete yatras with confirmed registrations.",
+    description="""
+Delete a yatra.
+
+**PATH PARAMETERS:**
+- yatra_id (integer): ID of the yatra
+
+**AUTHENTICATION:**
+- Requires admin role
+
+**NOTE:**
+- Cannot delete yatra with existing registrations
+    """,
 )
 def delete_yatra(
     yatra_id: int,
@@ -235,14 +338,87 @@ def delete_yatra(
     """Delete yatra (admin only)."""
     try:
         service = YatraService(db)
-        service.delete_yatra(yatra_id, current_user.id)
+        service.delete_yatra(yatra_id)
+
+        return JSONResponse(
+            status_code=status.HTTP_204_NO_CONTENT,
+            content=None,
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
+
+
+@router.post(
+    "/{yatra_id}/payment-options/{option_id}",
+    summary="Add Payment Option to Yatra (Admin)",
+    description="Associate a payment option with a yatra. Admin only.",
+)
+def add_payment_option_to_yatra(
+    yatra_id: int,
+    option_id: int,
+    admin: Devotee = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Add payment option to yatra."""
+    from app.services.payment_option_service import PaymentOptionService
+
+    try:
+        service = PaymentOptionService(db)
+        service.add_payment_option_to_yatra(yatra_id, option_id)
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
                 "success": True,
                 "status_code": status.HTTP_200_OK,
-                "message": "Yatra deleted successfully",
+                "message": "Payment option added to yatra successfully",
+                "data": None,
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
+
+
+@router.delete(
+    "/{yatra_id}/payment-options/{option_id}",
+    summary="Remove Payment Option from Yatra (Admin)",
+    description="Remove payment option association from a yatra. Admin only.",
+)
+def remove_payment_option_from_yatra(
+    yatra_id: int,
+    option_id: int,
+    admin: Devotee = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove payment option from yatra."""
+    from app.services.payment_option_service import PaymentOptionService
+
+    try:
+        service = PaymentOptionService(db)
+        service.remove_payment_option_from_yatra(yatra_id, option_id)
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": "Payment option removed from yatra successfully",
                 "data": None,
             },
         )

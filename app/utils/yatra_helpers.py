@@ -5,120 +5,208 @@ This module contains utility functions for pricing calculation, group ID generat
 and member validation.
 """
 
-import uuid
-from datetime import date, datetime
-from typing import TYPE_CHECKING
+from datetime import date
+from decimal import Decimal
 
-from app.db.models import PricingTemplateDetail
-from app.schemas.yatra_member import YatraMemberCreate
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-if TYPE_CHECKING:
-    pass
+from app.db.models import RoomCategory, Yatra, YatraRegistration
 
 
-def generate_group_id() -> str:
+def generate_group_id(yatra_id: int, yatra_start_date: date, db: Session) -> str:
     """
     Generate a unique group ID for yatra registrations.
 
+    Format: GRP-{year}-{yatra_id}-{sequence}
+    Example: GRP-2026-1-001
+
+    Args:
+        yatra_id: ID of the yatra
+        yatra_start_date: Start date of the yatra (to get year)
+        db: Database session
+
     Returns:
-        UUID string for group identification
+        Group ID string in format GRP-{year}-{yatra_id}-{sequence}
     """
-    return str(uuid.uuid4())
+    year = yatra_start_date.year
+
+    # Get the maximum group_id for this yatra to determine next sequence
+    max_group_id = (
+        db.query(func.max(YatraRegistration.group_id))
+        .filter(YatraRegistration.yatra_id == yatra_id)
+        .scalar()
+    )
+
+    if max_group_id:
+        # Extract sequence from "GRP-2026-1-001" format
+        try:
+            sequence = int(max_group_id.split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            # Fallback if format is unexpected
+            sequence = 1
+    else:
+        sequence = 1
+
+    return f"GRP-{year}-{yatra_id}-{sequence:03d}"
 
 
-def calculate_age(date_of_birth: date) -> int:
+def calculate_age_at_date(date_of_birth: date, reference_date: date) -> float:
     """
-    Calculate age from date of birth.
+    Calculate age at a specific reference date.
 
     Args:
         date_of_birth: Date of birth
+        reference_date: Date to calculate age at (e.g., yatra start date)
 
     Returns:
-        Age in years
+        Age in years (as float for precision)
     """
-    today = date.today()
-    age = today.year - date_of_birth.year
-    if (today.month, today.day) < (date_of_birth.month, date_of_birth.day):
-        age -= 1
-    return age
+    age_in_days = (reference_date - date_of_birth).days
+    age_in_years = age_in_days / 365.25
+    return age_in_years
 
 
 def calculate_member_price(
-    member: YatraMemberCreate,
-    pricing_details: list[PricingTemplateDetail],
-) -> tuple[int, bool]:
+    member_dob: date,
+    yatra_start_date: date,
+    yatra_id: int,
+    room_category_name: str,
+    db: Session,
+) -> Decimal:
     """
-    Calculate price for a member based on age and room category.
+    Calculate price for a member based on age at yatra start date and room category.
+
+    Children under 5 years old (at yatra start date) are free.
+    Everyone else pays the full price for their room category.
 
     Args:
-        member: Member data
-        pricing_details: Pricing template details for all room categories
+        member_dob: Member's date of birth
+        yatra_start_date: Yatra start date (for age calculation)
+        yatra_id: ID of the yatra
+        room_category_name: Name of the room category
+        db: Database session
 
     Returns:
-        Tuple of (price_charged, is_free)
-    """
-    # Check if member is under 5 years old (free)
-    if member.date_of_birth:
-        age = calculate_age(member.date_of_birth)
-        if age < 5:
-            return (0, True)
-
-    # Find pricing for the member's room category
-    for detail in pricing_details:
-        if detail.room_category == member.room_category:
-            # price_per_person is an Integer column, so it's already an int when queried
-            price: int = detail.price_per_person  # type: ignore[assignment]
-            return (price, False)
-
-    # Fallback (should not happen if validation is correct)
-    return (0, False)
-
-
-def validate_member_dates(
-    member: YatraMemberCreate,
-    yatra_start_date: date,
-    yatra_end_date: date,
-) -> None:
-    """
-    Validate that member's arrival and departure dates are within yatra period.
-
-    Args:
-        member: Member data
-        yatra_start_date: Yatra start date
-        yatra_end_date: Yatra end date
+        Price to charge for this member (Decimal)
 
     Raises:
-        ValueError: If dates are invalid
+        ValueError: If room category not found or inactive
     """
-    arrival_date = member.arrival_datetime.date()
-    departure_date = member.departure_datetime.date()
+    # Calculate age at yatra start date
+    age_at_yatra = calculate_age_at_date(member_dob, yatra_start_date)
 
-    if arrival_date < yatra_start_date:
+    # Children under 5 are free
+    if age_at_yatra < 5:
+        return Decimal("0.00")
+
+    # Get price for room category
+    category = (
+        db.query(RoomCategory)
+        .filter(
+            RoomCategory.yatra_id == yatra_id,
+            RoomCategory.name == room_category_name,
+            RoomCategory.is_active,
+        )
+        .first()
+    )
+
+    if not category:
         raise ValueError(
-            f"Arrival date {arrival_date} cannot be before yatra start date {yatra_start_date}"
+            f"Room category '{room_category_name}' not found or inactive for yatra {yatra_id}"
         )
 
-    if departure_date > yatra_end_date:
-        raise ValueError(
-            f"Departure date {departure_date} cannot be after yatra end date {yatra_end_date}"
-        )
-
-    if member.departure_datetime <= member.arrival_datetime:
-        raise ValueError("Departure date and time must be after arrival date and time")
+    return Decimal(str(category.price_per_person))
 
 
-def generate_registration_number(yatra_id: int, sequence: int) -> str:
+def validate_yatra_capacity(yatra_id: int, db: Session) -> None:
     """
-    Generate a unique registration number.
+    Validate that yatra has capacity for new registrations.
 
-    Format: YTR-{YEAR}-{YATRA_ID}-{SEQUENCE}
+    Note: Currently no capacity limit, but this function is kept for future use.
 
     Args:
-        yatra_id: Yatra ID
-        sequence: Sequential number for the registration
+        yatra_id: ID of the yatra
+        db: Database session
+
+    Raises:
+        ValueError: If yatra is at capacity (not implemented yet)
+    """
+    # No capacity limit for now, as per requirements
+    # This function is a placeholder for future implementation
+    pass
+
+
+def validate_room_category_exists_in_template(
+    yatra_id: int, room_category_name: str, db: Session
+) -> bool:
+    """
+    Check if a room category exists and is active for a yatra.
+
+    Args:
+        yatra_id: ID of the yatra
+        room_category_name: Name of the room category
+        db: Database session
 
     Returns:
-        Registration number string
+        True if category exists and is active, False otherwise
     """
-    year = datetime.now().year
-    return f"YTR-{year}-{yatra_id:03d}-{sequence:04d}"
+    category = (
+        db.query(RoomCategory)
+        .filter(
+            RoomCategory.yatra_id == yatra_id,
+            RoomCategory.name == room_category_name,
+            RoomCategory.is_active,
+        )
+        .first()
+    )
+
+    return category is not None
+
+
+def validate_payment_option_for_yatra(yatra_id: int, payment_option_id: int, db: Session) -> bool:
+    """
+    Check if a payment option is available for a yatra.
+
+    Args:
+        yatra_id: ID of the yatra
+        payment_option_id: ID of the payment option
+        db: Database session
+
+    Returns:
+        True if payment option is available for this yatra, False otherwise
+    """
+    from app.db.models import YatraPaymentOption
+
+    link = (
+        db.query(YatraPaymentOption)
+        .filter(
+            YatraPaymentOption.yatra_id == yatra_id,
+            YatraPaymentOption.payment_option_id == payment_option_id,
+        )
+        .first()
+    )
+
+    return link is not None
+
+
+def get_yatra_start_date(yatra_id: int, db: Session) -> date:
+    """
+    Get the start date of a yatra.
+
+    Args:
+        yatra_id: ID of the yatra
+        db: Database session
+
+    Returns:
+        Yatra start date
+
+    Raises:
+        ValueError: If yatra not found
+    """
+    yatra = db.query(Yatra).filter(Yatra.id == yatra_id).first()
+
+    if not yatra:
+        raise ValueError(f"Yatra {yatra_id} not found")
+
+    return yatra.start_date  # type: ignore[return-value]

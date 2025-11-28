@@ -85,15 +85,32 @@ class RegistrationStatus(str, Enum):
     COMPLETED = "COMPLETED"
 
 
-class RoomCategory(str, Enum):
-    """Room category enumeration for yatra pricing."""
+class RoomPreference(str, Enum):
+    """Room preference enumeration for yatra registration."""
 
-    SHARED_AC = "SHARED_AC"
-    SHARED_NON_AC = "SHARED_NON_AC"
-    PRIVATE_AC = "PRIVATE_AC"
-    PRIVATE_NON_AC = "PRIVATE_NON_AC"
-    FAMILY_AC = "FAMILY_AC"
-    FAMILY_NON_AC = "FAMILY_NON_AC"
+    MALE_SHARING = "MALE_SHARING"
+    FEMALE_SHARING = "FEMALE_SHARING"
+    FAMILY = "FAMILY"
+    FAMILY_WITH_CHILDREN = "FAMILY_WITH_CHILDREN"
+
+
+class PaymentMethod(str, Enum):
+    """Payment method enumeration."""
+
+    UPI = "UPI"
+    BANK_TRANSFER = "BANK_TRANSFER"
+    QR_CODE = "QR_CODE"
+    CASH = "CASH"
+    CHEQUE = "CHEQUE"
+
+
+class PaymentStatus(str, Enum):
+    """Payment status enumeration."""
+
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    REFUNDED = "REFUNDED"
 
 
 class Devotee(Base):
@@ -203,103 +220,90 @@ class Devotee(Base):
 # User model removed - using Devotee model only for production
 
 
-class PricingTemplate(Base):
+class RoomCategory(Base):
     """
-    Reusable pricing template for yatras.
+    Room category with pricing for a specific yatra.
 
-    This model stores pricing configurations that can be reused across
-    multiple yatras, ensuring consistency and easy management.
+    Admin can create custom room categories per yatra with free-text names
+    (e.g., "Deluxe AC Suite", "Economy Shared", "VIP Room").
     """
 
-    __tablename__ = "pricing_templates"
+    __tablename__ = "room_categories"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(127), nullable=False, unique=True)
+    yatra_id = Column(
+        Integer, ForeignKey("yatras.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name = Column(String(100), nullable=False)
+    price_per_person = Column(Integer, nullable=False)
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    def __repr__(self):
-        return f"<PricingTemplate(id={self.id}, name={self.name})>"
-
-
-class PricingTemplateDetail(Base):
-    """
-    Pricing details for each room category within a pricing template.
-
-    Each template has 6 detail records (one per room category).
-    """
-
-    __tablename__ = "pricing_template_details"
-
-    id = Column(Integer, primary_key=True)
-    template_id = Column(Integer, ForeignKey("pricing_templates.id"), nullable=False)
-    room_category = Column(SQLEnum(RoomCategory), nullable=False)
-    price_per_person = Column(Integer, nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint("template_id", "room_category", name="uq_template_room"),
-        Index("idx_template_pricing", "template_id", "room_category"),
-    )
+    __table_args__ = (UniqueConstraint("yatra_id", "name", name="unique_category_per_yatra"),)
 
     def __repr__(self):
-        return f"<PricingTemplateDetail(id={self.id}, template_id={self.template_id}, room_category={self.room_category}, price={self.price_per_person})>"
+        return f"<RoomCategory(id={self.id}, yatra_id={self.yatra_id}, name={self.name}, price={self.price_per_person})>"
 
 
 class PaymentOption(Base):
     """
     Reusable payment option for yatras.
 
-    This model stores payment methods (bank account or UPI) that can be
+    This model stores payment methods (bank account, UPI, QR code) that can be
     reused across multiple yatras.
     """
 
     __tablename__ = "payment_options"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(127), nullable=False, unique=True)
+    name = Column(String(255), nullable=False)
+    method = Column(SQLEnum(PaymentMethod), nullable=False)
 
-    # Bank Details (nullable)
-    bank_account_number = Column(String(50), nullable=True)
-    ifsc_code = Column(String(20), nullable=True)
-    bank_name = Column(String(100), nullable=True)
-    branch_name = Column(String(100), nullable=True)
-    account_holder_name = Column(String(127), nullable=True)
-    account_type = Column(String(50), nullable=True)
-
-    # UPI Details (nullable)
+    # UPI Details
     upi_id = Column(String(100), nullable=True)
-    upi_phone_number = Column(String(20), nullable=True)
-    qr_code_path = Column(String(512), nullable=True)
 
-    payment_method = Column(String(20), nullable=False)
+    # Bank Details
+    account_holder = Column(String(255), nullable=True)
+    account_number = Column(String(50), nullable=True)
+    ifsc_code = Column(String(20), nullable=True)
+    bank_name = Column(String(255), nullable=True)
+    branch = Column(String(255), nullable=True)
+
+    # QR Code
+    qr_code_url = Column(String(500), nullable=True)
+
+    # General
+    instructions = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
-    notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     def __repr__(self):
-        return f"<PaymentOption(id={self.id}, name={self.name}, method={self.payment_method})>"
+        return f"<PaymentOption(id={self.id}, name={self.name}, method={self.method})>"
 
 
 class YatraPaymentOption(Base):
     """
     Junction table linking yatras to payment options.
 
-    This allows multiple payment options per yatra with display ordering.
+    This allows multiple payment options per yatra.
     """
 
     __tablename__ = "yatra_payment_options"
 
     id = Column(Integer, primary_key=True)
-    yatra_id = Column(Integer, ForeignKey("yatras.id"), nullable=False)
-    payment_option_id = Column(Integer, ForeignKey("payment_options.id"), nullable=False)
-    display_order = Column(Integer, default=0)
+    yatra_id = Column(
+        Integer, ForeignKey("yatras.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    payment_option_id = Column(
+        Integer, ForeignKey("payment_options.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("yatra_id", "payment_option_id", name="uq_yatra_payment"),
-        Index("idx_yatra_payment", "yatra_id"),
+        UniqueConstraint("yatra_id", "payment_option_id", name="unique_payment_per_yatra"),
     )
 
     def __repr__(self):
@@ -311,38 +315,49 @@ class YatraMember(Base):
     Individual member in a yatra registration.
 
     This model tracks each person in a group registration, including
-    registered users and guest members.
+    registered users and guest members. Room category is stored as VARCHAR
+    to support custom category names per yatra.
     """
 
     __tablename__ = "yatra_members"
 
     id = Column(Integer, primary_key=True)
-    registration_id = Column(Integer, ForeignKey("yatra_registrations.id"), nullable=False)
-    devotee_id = Column(Integer, ForeignKey("devotees.id"), nullable=True)
+    registration_id = Column(
+        Integer,
+        ForeignKey("yatra_registrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    devotee_id = Column(
+        Integer, ForeignKey("devotees.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
+    # Personal Information
     legal_name = Column(String(127), nullable=False)
+    date_of_birth = Column(Date, nullable=False)
     gender = Column(SQLEnum(Gender), nullable=False)
-    date_of_birth = Column(Date, nullable=True)
-    mobile_number = Column(String(20), nullable=True)
+    mobile_number = Column(String(15), nullable=True)
     email = Column(String(255), nullable=True)
 
-    arrival_datetime = Column(DateTime(timezone=True), nullable=False)
-    departure_datetime = Column(DateTime(timezone=True), nullable=False)
-    room_category = Column(SQLEnum(RoomCategory), nullable=False)
+    # Room Information
+    room_category = Column(String(100), nullable=False)
+    room_preference = Column(SQLEnum(RoomPreference), nullable=False)
 
-    price_charged = Column(Integer, nullable=False)
-    is_free = Column(Boolean, default=False)
+    # Registration Details
     is_primary_registrant = Column(Boolean, default=False)
-    is_registered_user = Column(Boolean, default=False)
+    price_charged = Column(Integer, nullable=False)
 
+    # Travel Details
+    arrival_datetime = Column(DateTime(timezone=True), nullable=True)
+    departure_datetime = Column(DateTime(timezone=True), nullable=True)
+
+    # Special Requirements
     dietary_requirements = Column(String(255), nullable=True)
     medical_conditions = Column(String(255), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (
-        Index("idx_member_registration", "registration_id"),
-        Index("idx_member_devotee", "devotee_id"),
-    )
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     def __repr__(self):
         return f"<YatraMember(id={self.id}, name={self.legal_name}, registration_id={self.registration_id})>"
@@ -352,8 +367,8 @@ class Yatra(Base):
     """
     Yatra (pilgrimage) model for managing ISKCON yatras.
 
-    This model captures all information about yatras including dates,
-    pricing template reference, itinerary, and registration management.
+    Simplified model without pricing templates, max capacity, or featured flags.
+    Room categories and pricing are managed separately per yatra.
     """
 
     __tablename__ = "yatras"
@@ -363,49 +378,24 @@ class Yatra(Base):
 
     # Basic Information
     name = Column(String(255), nullable=False, index=True)
-    slug = Column(String(255), unique=True, nullable=False, index=True)
     destination = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
 
     # Dates
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False)
-    registration_start_date = Column(Date, nullable=False)
     registration_deadline = Column(Date, nullable=False, index=True)
 
-    # Pricing Template Reference
-    pricing_template_id = Column(
-        Integer, ForeignKey("pricing_templates.id"), nullable=False, index=True
-    )
-
-    # Capacity
-    max_capacity = Column(Integer, nullable=True)
-
     # Details
-    itinerary = Column(JSON, nullable=True)
-    inclusions = Column(Text, nullable=True)
-    exclusions = Column(Text, nullable=True)
-    important_notes = Column(Text, nullable=True)
+    itinerary = Column(Text, nullable=True)
     terms_and_conditions = Column(Text, nullable=True)
 
     # Status
-    status = Column(SQLEnum(YatraStatus), default=YatraStatus.DRAFT, index=True)
-    is_featured = Column(Boolean, default=False)
-    featured_until = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
 
-    # Metadata
-    created_by = Column(Integer, ForeignKey("devotees.id"), nullable=False)
+    # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    # Soft delete
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Performance optimization indexes
-    __table_args__ = (
-        Index("idx_yatra_status_dates", "status", "start_date"),
-        Index("idx_yatra_registration_open", "status", "registration_deadline"),
-    )
 
     def __repr__(self):
         return f"<Yatra(id={self.id}, name={self.name}, destination={self.destination})>"
@@ -415,65 +405,41 @@ class YatraRegistration(Base):
     """
     Yatra registration model for managing devotee registrations.
 
-    This model now represents individual member registrations linked by group_id.
-    Each member in a group has their own registration record.
+    Simplified model with group_id in format GRP-{year}-{yatra_id}-{sequence}.
+    Each registration represents one devotee's registration, linked to members via group_id.
     """
 
     __tablename__ = "yatra_registrations"
 
     # Primary key
     id = Column(Integer, primary_key=True, index=True)
-    registration_number = Column(String(50), unique=True, nullable=False, index=True)
 
     # Foreign Keys
     yatra_id = Column(
-        Integer, ForeignKey("yatras.id", ondelete="RESTRICT"), nullable=False, index=True
+        Integer, ForeignKey("yatras.id", ondelete="CASCADE"), nullable=False, index=True
     )
     devotee_id = Column(
-        Integer, ForeignKey("devotees.id", ondelete="RESTRICT"), nullable=False, index=True
+        Integer, ForeignKey("devotees.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    # Group Management
+    # Group Management (format: GRP-2026-1-001)
     group_id = Column(String(50), nullable=False, index=True)
     is_group_lead = Column(Boolean, default=True)
 
-    # Payment (only for group lead)
-    total_amount = Column(Integer, nullable=False)
-    payment_screenshot_path = Column(String(512), nullable=True)
-    payment_reference = Column(String(100), nullable=True)
-    payment_date = Column(DateTime(timezone=True), nullable=True)
-    payment_method = Column(String(50), nullable=True)
+    # Payment Information
+    payment_option_id = Column(Integer, ForeignKey("payment_options.id"), nullable=False)
+    payment_amount = Column(Integer, nullable=False)
+    payment_status = Column(SQLEnum(PaymentStatus), default=PaymentStatus.PENDING, index=True)
 
-    # Status & Workflow
+    # Registration Status
     status = Column(SQLEnum(RegistrationStatus), default=RegistrationStatus.PENDING, index=True)
-
-    # Admin Actions
-    admin_remarks = Column(Text, nullable=True)
-    internal_notes = Column(Text, nullable=True)
-    reviewed_by = Column(Integer, ForeignKey("devotees.id"), nullable=True)
-    reviewed_at = Column(DateTime(timezone=True), nullable=True)
-    confirmed_by = Column(Integer, ForeignKey("devotees.id"), nullable=True)
-    confirmed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    submitted_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Soft delete
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Performance optimization indexes
-    __table_args__ = (
-        Index("idx_reg_yatra_devotee", "yatra_id", "devotee_id"),
-        Index("idx_reg_status_yatra", "status", "yatra_id"),
-        Index("idx_reg_devotee_status", "devotee_id", "status"),
-        Index("idx_reg_number", "registration_number"),
-        Index("idx_reg_group", "group_id"),
-    )
 
     def __repr__(self):
-        return f"<YatraRegistration(id={self.id}, registration_number={self.registration_number}, status={self.status})>"
+        return f"<YatraRegistration(id={self.id}, group_id={self.group_id}, status={self.status})>"
 
 
 # --- Email normalization events ---

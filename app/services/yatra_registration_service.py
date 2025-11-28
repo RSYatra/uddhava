@@ -2,32 +2,33 @@
 Business logic service for yatra registration management.
 
 This service handles group registrations with individual member tracking,
-pricing calculation, and payment management.
+pricing calculation based on room categories, and payment management.
 """
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import date
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Gender,
     PaymentOption,
-    PricingTemplateDetail,
+    PaymentStatus,
     RegistrationStatus,
+    RoomPreference,
     Yatra,
     YatraMember,
     YatraPaymentOption,
     YatraRegistration,
-    YatraStatus,
 )
-from app.repositories.yatra_repository import YatraRepository
-from app.schemas.yatra_registration import RegistrationCreate
+from app.schemas.yatra_registration import RegistrationCreate, RegistrationUpdate
 from app.utils.yatra_helpers import (
     calculate_member_price,
     generate_group_id,
-    generate_registration_number,
-    validate_member_dates,
+    validate_payment_option_for_yatra,
+    validate_room_category_exists_in_template,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,8 @@ class YatraRegistrationService:
     """Service for yatra registration business logic."""
 
     def __init__(self, db: Session):
+        """Initialize service with database session."""
         self.db = db
-        self.yatra_repository = YatraRepository(db)
 
     def create_registration(self, devotee_id: int, reg_data: RegistrationCreate) -> dict:
         """
@@ -46,95 +47,115 @@ class YatraRegistrationService:
 
         Args:
             devotee_id: ID of the devotee creating the registration
-            reg_data: Registration data with members array
+            reg_data: Registration data with members array and payment option
 
         Returns:
-            Dictionary with group_id, registrations, members, total_amount, payment_options
+            Dictionary with group_id, registration, members, total_amount, payment_options
 
         Raises:
             HTTPException: For validation errors or system failures
         """
         try:
             # Validate yatra exists and is accepting registrations
-            yatra = self.yatra_repository.get_by_id(reg_data.yatra_id)
+            yatra = self.db.query(Yatra).filter(Yatra.id == reg_data.yatra_id).first()
             if not yatra:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Yatra not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Yatra not found",
+                )
 
             self._validate_registration_open(yatra)
 
-            # Get pricing template details
-            pricing_details = (
-                self.db.query(PricingTemplateDetail)
-                .filter(PricingTemplateDetail.template_id == yatra.pricing_template_id)
-                .all()
-            )
-
-            if not pricing_details:
+            # Validate payment option is available for this yatra
+            if not validate_payment_option_for_yatra(
+                reg_data.yatra_id, reg_data.payment_option_id, self.db
+            ):
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Pricing template not configured for this yatra",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected payment option is not available for this yatra",
                 )
 
-            # Validate all members
+            # Validate all room categories exist
             for member in reg_data.members:
-                validate_member_dates(member, yatra.start_date, yatra.end_date)
+                if not validate_room_category_exists_in_template(
+                    reg_data.yatra_id, member.room_category, self.db
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Room category '{member.room_category}' not found for this yatra",
+                    )
 
             # Generate group ID
-            group_id = generate_group_id()
+            group_id = generate_group_id(reg_data.yatra_id, yatra.start_date, self.db)
 
-            # Get next registration sequence number
-            sequence = self._get_next_sequence(reg_data.yatra_id)
+            # Calculate prices for all members
+            total_amount = Decimal("0")
+            member_prices = []
 
-            # Create registrations and members
-            registrations = []
+            for member_data in reg_data.members:
+                price = calculate_member_price(
+                    member_data.date_of_birth,
+                    yatra.start_date,
+                    reg_data.yatra_id,
+                    member_data.room_category,
+                    self.db,
+                )
+                member_prices.append(int(price))
+                total_amount += price
+
+            # Find the primary registrant
+            primary_member = next(m for m in reg_data.members if m.is_primary_registrant)
+
+            # Verify primary registrant is the current devotee
+            if primary_member.devotee_id != devotee_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Primary registrant must be the current user",
+                )
+
+            # Create single registration record (for the group lead)
+            registration = YatraRegistration(
+                yatra_id=reg_data.yatra_id,
+                devotee_id=devotee_id,
+                group_id=group_id,
+                is_group_lead=True,
+                payment_option_id=reg_data.payment_option_id,
+                payment_amount=int(total_amount),
+                payment_status=PaymentStatus.PENDING,
+                status=RegistrationStatus.PENDING,
+            )
+            self.db.add(registration)
+            self.db.flush()
+
+            # Create member records
             members = []
-            total_amount = 0
-
             for idx, member_data in enumerate(reg_data.members):
-                # Calculate price for this member
-                price_charged, is_free = calculate_member_price(member_data, pricing_details)
-                total_amount += price_charged
+                # Convert string values to enums
+                # For Gender, map string to enum value
+                gender_map = {"M": Gender.MALE, "F": Gender.FEMALE}
+                gender_enum = gender_map.get(member_data.gender, Gender.MALE)
 
-                # Create registration record
-                registration_number = generate_registration_number(
-                    reg_data.yatra_id, sequence + idx
-                )
+                # For RoomPreference, use enum name lookup
+                room_pref_enum = RoomPreference[member_data.room_preference]
 
-                registration = YatraRegistration(
-                    registration_number=registration_number,
-                    yatra_id=reg_data.yatra_id,
-                    devotee_id=devotee_id,
-                    group_id=group_id,
-                    is_group_lead=member_data.is_primary_registrant,
-                    total_amount=price_charged,  # Individual member amount
-                    status=RegistrationStatus.PENDING,
-                    submitted_at=datetime.now(UTC),
-                )
-                self.db.add(registration)
-                self.db.flush()
-
-                # Create member record
                 member = YatraMember(
                     registration_id=registration.id,
                     devotee_id=member_data.devotee_id,
                     legal_name=member_data.legal_name,
-                    gender=member_data.gender,
                     date_of_birth=member_data.date_of_birth,
+                    gender=gender_enum,
                     mobile_number=member_data.mobile_number,
                     email=member_data.email,
+                    room_category=member_data.room_category,
+                    room_preference=room_pref_enum,
+                    is_primary_registrant=member_data.is_primary_registrant,
+                    price_charged=member_prices[idx],
                     arrival_datetime=member_data.arrival_datetime,
                     departure_datetime=member_data.departure_datetime,
-                    room_category=member_data.room_category,
-                    price_charged=price_charged,
-                    is_free=is_free,
-                    is_primary_registrant=member_data.is_primary_registrant,
-                    is_registered_user=member_data.devotee_id is not None,
                     dietary_requirements=member_data.dietary_requirements,
                     medical_conditions=member_data.medical_conditions,
                 )
                 self.db.add(member)
-
-                registrations.append(registration)
                 members.append(member)
 
             # Get payment options for the yatra
@@ -142,7 +163,6 @@ class YatraRegistrationService:
                 self.db.query(PaymentOption)
                 .join(YatraPaymentOption)
                 .filter(YatraPaymentOption.yatra_id == reg_data.yatra_id)
-                .order_by(YatraPaymentOption.display_order)
                 .all()
             )
 
@@ -155,9 +175,9 @@ class YatraRegistrationService:
 
             return {
                 "group_id": group_id,
-                "registrations": registrations,
+                "registration": registration,
                 "members": members,
-                "total_amount": total_amount,
+                "total_amount": int(total_amount),
                 "payment_options": payment_options,
             }
 
@@ -172,21 +192,27 @@ class YatraRegistrationService:
                 detail=f"Failed to create registration: {str(e)}",
             )
 
-    def get_registration_by_id(self, reg_id: int, devotee_id: int) -> dict:
-        """Get registration with member details."""
+    def _get_registration_by_id_internal(self, reg_id: int) -> dict:
+        """
+        Internal method to get registration without authorization check.
+
+        Args:
+            reg_id: Registration ID
+
+        Returns:
+            Dictionary with registration and members
+
+        Raises:
+            HTTPException: If registration not found
+        """
         registration = (
-            self.db.query(YatraRegistration)
-            .filter(
-                YatraRegistration.id == reg_id,
-                YatraRegistration.devotee_id == devotee_id,
-                YatraRegistration.deleted_at.is_(None),
-            )
-            .first()
+            self.db.query(YatraRegistration).filter(YatraRegistration.id == reg_id).first()
         )
 
         if not registration:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Registration not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Registration not found",
             )
 
         # Get all members for this registration
@@ -194,16 +220,92 @@ class YatraRegistrationService:
 
         return {"registration": registration, "members": members}
 
-    def get_group_registrations(self, group_id: str, devotee_id: int) -> dict:
-        """Get all registrations and members for a group."""
+    def get_registration_by_id(self, reg_id: int, devotee_id: int) -> dict:
+        """
+        Get registration with member details.
+
+        Args:
+            reg_id: Registration ID
+            devotee_id: ID of the devotee requesting the registration (for access control)
+
+        Returns:
+            Dictionary with registration and members
+
+        Raises:
+            HTTPException: If registration not found or access denied
+        """
+        result = self._get_registration_by_id_internal(reg_id)
+        registration = result["registration"]
+
+        # Verify access - only the devotee who created the registration can view it
+        if registration.devotee_id != devotee_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view this registration",
+            )
+
+        return result
+
+    def get_registrations_for_devotee(self, devotee_id: int) -> list[dict]:
+        """
+        Get all registrations for a devotee.
+
+        Args:
+            devotee_id: Devotee ID
+
+        Returns:
+            List of registration dictionaries with members
+        """
         registrations = (
             self.db.query(YatraRegistration)
-            .filter(
-                YatraRegistration.group_id == group_id,
-                YatraRegistration.devotee_id == devotee_id,
-                YatraRegistration.deleted_at.is_(None),
-            )
+            .filter(YatraRegistration.devotee_id == devotee_id)
             .all()
+        )
+
+        result = []
+        for reg in registrations:
+            members = self.db.query(YatraMember).filter(YatraMember.registration_id == reg.id).all()
+            result.append({"registration": reg, "members": members})
+
+        return result
+
+    def get_registrations_for_yatra(self, yatra_id: int) -> list[dict]:
+        """
+        Get all registrations for a yatra (admin only).
+
+        Args:
+            yatra_id: Yatra ID
+
+        Returns:
+            List of registration dictionaries with members
+        """
+        registrations = (
+            self.db.query(YatraRegistration).filter(YatraRegistration.yatra_id == yatra_id).all()
+        )
+
+        result = []
+        for reg in registrations:
+            members = self.db.query(YatraMember).filter(YatraMember.registration_id == reg.id).all()
+            result.append({"registration": reg, "members": members})
+
+        return result
+
+    def get_group_registrations(self, group_id: str, devotee_id: int) -> dict:
+        """
+        Get all registrations and members for a group.
+
+        Args:
+            group_id: Group ID
+            devotee_id: ID of the devotee requesting the group (for access control)
+
+        Returns:
+            Dictionary with group details
+
+        Raises:
+            HTTPException: If group not found or access denied
+        """
+        registrations = (
+            self.db.query(YatraRegistration).filter(YatraRegistration.group_id == group_id).all()
         )
 
         if not registrations:
@@ -212,28 +314,158 @@ class YatraRegistrationService:
                 detail="No registrations found for this group",
             )
 
+        # Verify access - only the devotee who created the registration can view it
+        if registrations[0].devotee_id != devotee_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view this group",
+            )
+
         # Get all members for these registrations
         reg_ids = [r.id for r in registrations]
         members = self.db.query(YatraMember).filter(YatraMember.registration_id.in_(reg_ids)).all()
 
-        total_amount = sum(r.total_amount for r in registrations)
+        # Get yatra details
+        yatra = self.db.query(Yatra).filter(Yatra.id == registrations[0].yatra_id).first()
+
+        total_amount = sum(r.payment_amount for r in registrations)
 
         return {
             "group_id": group_id,
+            "yatra_id": yatra.id if yatra else None,
+            "yatra_name": yatra.name if yatra else None,
             "registrations": registrations,
             "members": members,
             "total_amount": total_amount,
+            "payment_status": registrations[0].payment_status,
+            "status": registrations[0].status,
         }
 
-    def _validate_registration_open(self, yatra: Yatra) -> None:
-        """Validate that registration is currently open for the yatra."""
-        today = date.today()
+    def update_registration(
+        self, reg_id: int, devotee_id: int, update_data: RegistrationUpdate
+    ) -> dict:
+        """
+        Update registration details.
 
-        if today < yatra.registration_start_date:
+        Args:
+            reg_id: Registration ID
+            devotee_id: Devotee ID (for authorization)
+            update_data: Update data
+
+        Returns:
+            Updated registration with members
+
+        Raises:
+            HTTPException: If registration not found or unauthorized
+        """
+        registration = (
+            self.db.query(YatraRegistration)
+            .filter(
+                YatraRegistration.id == reg_id,
+                YatraRegistration.devotee_id == devotee_id,
+            )
+            .first()
+        )
+
+        if not registration:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Registration not found",
+            )
+
+        # Update fields
+        if update_data.status is not None:
+            registration.status = update_data.status
+        if update_data.payment_status is not None:
+            registration.payment_status = update_data.payment_status
+
+        self.db.commit()
+        self.db.refresh(registration)
+
+        return self._get_registration_by_id_internal(reg_id)
+
+    def update_registration_status(self, reg_id: int, new_status: RegistrationStatus) -> dict:
+        """
+        Update registration status (admin only).
+
+        Args:
+            reg_id: Registration ID
+            new_status: New status
+
+        Returns:
+            Updated registration with members
+
+        Raises:
+            HTTPException: If registration not found
+        """
+        registration = (
+            self.db.query(YatraRegistration).filter(YatraRegistration.id == reg_id).first()
+        )
+
+        if not registration:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Registration not found",
+            )
+
+        registration.status = new_status
+        self.db.commit()
+        self.db.refresh(registration)
+
+        return self._get_registration_by_id_internal(reg_id)
+
+    def delete_registration(self, reg_id: int, devotee_id: int) -> None:
+        """
+        Delete a registration (only if in PENDING status).
+
+        Args:
+            reg_id: Registration ID
+            devotee_id: Devotee ID (for authorization)
+
+        Raises:
+            HTTPException: If registration not found, unauthorized, or cannot be deleted
+        """
+        registration = (
+            self.db.query(YatraRegistration)
+            .filter(
+                YatraRegistration.id == reg_id,
+                YatraRegistration.devotee_id == devotee_id,
+            )
+            .first()
+        )
+
+        if not registration:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Registration not found",
+            )
+
+        if registration.status != RegistrationStatus.PENDING:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Registration opens on {yatra.registration_start_date}",
+                detail="Can only delete registrations in PENDING status",
             )
+
+        # Delete members first (cascade should handle this, but being explicit)
+        self.db.query(YatraMember).filter(YatraMember.registration_id == reg_id).delete()
+
+        # Delete registration
+        self.db.delete(registration)
+        self.db.commit()
+
+        logger.info(f"Registration {reg_id} deleted by devotee {devotee_id}")
+
+    def _validate_registration_open(self, yatra: Yatra) -> None:
+        """
+        Validate that registration is currently open for the yatra.
+
+        Args:
+            yatra: Yatra object
+
+        Raises:
+            HTTPException: If registration is not open
+        """
+        today = date.today()
 
         if today > yatra.registration_deadline:
             raise HTTPException(
@@ -241,15 +473,8 @@ class YatraRegistrationService:
                 detail="Registration deadline has passed",
             )
 
-        if yatra.status not in [YatraStatus.UPCOMING, YatraStatus.DRAFT]:
+        if not yatra.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Yatra is {yatra.status.value} and not accepting registrations",
+                detail="Yatra is not active and not accepting registrations",
             )
-
-    def _get_next_sequence(self, yatra_id: int) -> int:
-        """Get the next registration sequence number for a yatra."""
-        count = (
-            self.db.query(YatraRegistration).filter(YatraRegistration.yatra_id == yatra_id).count()
-        )
-        return count + 1
