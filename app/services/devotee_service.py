@@ -18,6 +18,7 @@ from sqlalchemy import desc, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.responses import StandardHTTPException
 from app.core.security import get_password_hash, verify_password
 from app.db.models import (
     Devotee,
@@ -75,9 +76,11 @@ class DevoteeService:
         # Check if devotee exists
         existing_devotee = self.get_devotee_by_email(db, devotee_data.email)
         if existing_devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Devotee with this email already exists",
+                message="Devotee with this email already exists",
+                success=False,
+                data=None,
             )
 
         # Validate business rules
@@ -534,15 +537,19 @@ class DevoteeService:
 
         if existing_devotee:
             if existing_devotee.email_verified is True:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="A verified devotee with this email already exists",
+                    message="A verified devotee with this email already exists",
+                    success=False,
+                    data=None,
                 )
             # Resend verification email for unverified devotee
             await self._send_verification_email(existing_devotee)
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Devotee exists but is not verified. Verification email sent again.",
+                message="Devotee exists but is not verified. Verification email sent again.",
+                success=False,
+                data=None,
             )
 
         # Generate secure verification token
@@ -581,9 +588,11 @@ class DevoteeService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to create simple unverified devotee: {e!s}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create devotee account",
+                message="Failed to create devotee account",
+                success=False,
+                data=None,
             ) from None
 
     async def verify_devotee_email(self, token: str) -> str:
@@ -595,16 +604,20 @@ class DevoteeService:
         devotee = self.db.query(Devotee).filter(Devotee.verification_token == token).first()
 
         if not devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invalid or expired verification token",
+                message="Invalid or expired verification token",
+                success=False,
+                data=None,
             )
 
         # Check if already verified
         if getattr(devotee, "email_verified", False) is True:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already verified",
+                message="Email is already verified",
+                success=False,
+                data=None,
             )
 
         # Check if token is expired with proper timezone handling
@@ -617,9 +630,11 @@ class DevoteeService:
                 expires_at = expires_at.replace(tzinfo=UTC)
 
             if expires_at < current_time:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Verification token has expired",
+                    message="Verification token has expired",
+                    success=False,
+                    data=None,
                 )
 
         try:
@@ -649,26 +664,32 @@ class DevoteeService:
         except Exception as e:
             logger.error(f"Failed to verify devotee email: {e!s}")
             self.db.rollback()
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to verify email",
+                message="Failed to verify email",
+                success=False,
+                data=None,
             ) from None
 
     async def resend_verification_email(self, email: str) -> bool:
         """Resend verification email to devotee."""
         devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Devotee not found",
+                message="Devotee not found",
+                success=False,
+                data=None,
             )
 
         # Check if already verified - ensure we get the actual boolean value
         already_verified = getattr(devotee, "email_verified", False)
         if already_verified is True:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already verified",
+                message="Email is already verified",
+                success=False,
+                data=None,
             )
 
         try:
@@ -685,9 +706,11 @@ class DevoteeService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to resend verification email: {e!s}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to resend verification email",
+                message="Failed to resend verification email",
+                success=False,
+                data=None,
             )
 
     async def _send_verification_email(self, devotee: Devotee):
@@ -703,15 +726,19 @@ class DevoteeService:
         """Send password reset email to devotee."""
         devotee = self.get_devotee_by_email(self.db, email)
         if not devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
+                message="User not found",
+                success=False,
+                data=None,
             )
 
         if getattr(devotee, "email_verified", False) is not True:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email must be verified before password reset",
+                message="Email must be verified before password reset",
+                success=False,
+                data=None,
             )
 
         try:
@@ -734,9 +761,11 @@ class DevoteeService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to send password reset email: {e!s}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to send password reset email",
+                message="Failed to send password reset email",
+                success=False,
+                data=None,
             ) from None
 
     def reset_password_with_token(self, token: str, new_password: str) -> bool:
@@ -744,9 +773,11 @@ class DevoteeService:
         devotee = self.db.query(Devotee).filter(Devotee.password_reset_token == token).first()
 
         if not devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invalid reset token",
+                message="Invalid reset token",
+                success=False,
+                data=None,
             )
 
         # Check if token is expired
@@ -756,9 +787,11 @@ class DevoteeService:
             expires_time = expires_time.replace(tzinfo=UTC)
 
         if expires_time < datetime.now(UTC):
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Reset token has expired",
+                message="Reset token has expired",
+                success=False,
+                data=None,
             )
 
         try:
@@ -774,18 +807,22 @@ class DevoteeService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to reset password: {e!s}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to reset password",
+                message="Failed to reset password",
+                success=False,
+                data=None,
             ) from None
 
     def admin_reset_password(self, devotee_id: int, new_password: str, admin_id: int) -> bool:
         """Admin function to reset any devotee's password."""
         devotee = self.get_devotee_by_id(self.db, devotee_id)
         if not devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Devotee not found",
+                message="Devotee not found",
+                success=False,
+                data=None,
             )
 
         try:
@@ -798,9 +835,11 @@ class DevoteeService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to admin reset password: {e!s}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to reset password",
+                message="Failed to reset password",
+                success=False,
+                data=None,
             ) from None
 
     def authenticate_devotee(self, email: str, password: str) -> Devotee | None:
@@ -810,9 +849,11 @@ class DevoteeService:
             return None
 
         if getattr(devotee, "email_verified", False) is not True:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email must be verified before login",
+                message="Email must be verified before login",
+                success=False,
+                data=None,
             )
 
         if not verify_password(password, devotee.password_hash):
@@ -840,9 +881,11 @@ class DevoteeService:
 
         # Check against limit
         if total_size > settings.max_upload_size_bytes:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Total file size ({total_size / 1024 / 1024:.2f}MB) would exceed maximum allowed ({settings.max_upload_size_mb}MB). Please delete some files first.",
+                message=f"Total file size ({total_size / 1024 / 1024:.2f}MB) would exceed maximum allowed ({settings.max_upload_size_mb}MB). Please delete some files first.",
+                success=False,
+                data=None,
             )
 
     async def complete_devotee_profile(
@@ -869,16 +912,20 @@ class DevoteeService:
         """
         devotee = self.get_devotee_by_id(self.db, user_id)
         if not devotee:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Devotee not found",
+                message="Devotee not found",
+                success=False,
+                data=None,
             )
 
         # Check if email is verified
         if getattr(devotee, "email_verified", False) is not True:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email must be verified before completing profile",
+                message="Email must be verified before completing profile",
+                success=False,
+                data=None,
             )
 
         try:
@@ -906,9 +953,11 @@ class DevoteeService:
                 total_files = len(existing_files) + len(uploaded_files)
 
                 if total_files > settings.max_files_per_user:
-                    raise HTTPException(
+                    raise StandardHTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Maximum {settings.max_files_per_user} files allowed. You have {len(existing_files)} existing files.",
+                        message=f"Maximum {settings.max_files_per_user} files allowed. You have {
+                            len(existing_files)
+                        } existing files.",
                     )
 
                 # Save each file and collect metadata
@@ -950,9 +999,11 @@ class DevoteeService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to complete devotee profile: {e!s}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to complete profile",
+                message="Failed to complete profile",
+                success=False,
+                data=None,
             ) from None
 
 

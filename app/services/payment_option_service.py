@@ -7,9 +7,10 @@ that can be associated with multiple yatras.
 
 import logging
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.responses import StandardHTTPException
 from app.db.models import PaymentOption, YatraPaymentOption
 from app.schemas.payment_option import PaymentOptionCreate, PaymentOptionUpdate
 
@@ -60,9 +61,9 @@ class PaymentOptionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to create payment option: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create payment option: {str(e)}",
+                message=f"Failed to create payment option: {str(e)}",
             )
 
     def get_payment_option(self, option_id: int) -> PaymentOption:
@@ -81,9 +82,11 @@ class PaymentOptionService:
         payment_option = self.db.query(PaymentOption).filter(PaymentOption.id == option_id).first()
 
         if not payment_option:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Payment option not found",
+                message="Payment option not found",
+                success=False,
+                data=None,
             )
 
         return payment_option
@@ -140,9 +143,9 @@ class PaymentOptionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to update payment option: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to update payment option: {str(e)}",
+                message=f"Failed to update payment option: {str(e)}",
             )
 
     def delete_payment_option(self, option_id: int) -> None:
@@ -166,9 +169,9 @@ class PaymentOptionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to delete payment option: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to delete payment option: {str(e)}",
+                message=f"Failed to delete payment option: {str(e)}",
             )
 
     def add_payment_option_to_yatra(self, yatra_id: int, option_id: int) -> None:
@@ -193,9 +196,11 @@ class PaymentOptionService:
         )
 
         if existing:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Payment option already associated with this yatra",
+                message="Payment option already associated with this yatra",
+                success=False,
+                data=None,
             )
 
         try:
@@ -211,9 +216,9 @@ class PaymentOptionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to add payment option to yatra: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to add payment option to yatra: {str(e)}",
+                message=f"Failed to add payment option to yatra: {str(e)}",
             )
 
     def remove_payment_option_from_yatra(self, yatra_id: int, option_id: int) -> None:
@@ -237,9 +242,11 @@ class PaymentOptionService:
         )
 
         if not yatra_payment_option:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Payment option not associated with this yatra",
+                message="Payment option not associated with this yatra",
+                success=False,
+                data=None,
             )
 
         try:
@@ -251,7 +258,7 @@ class PaymentOptionService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to remove payment option from yatra: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to remove payment option from yatra: {str(e)}",
+                message=f"Failed to remove payment option from yatra: {str(e)}",
             )

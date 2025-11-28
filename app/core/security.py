@@ -7,13 +7,14 @@ hashing and JWT for token-based authentication.
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt  # type: ignore
 from passlib.context import CryptContext  # type: ignore
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.responses import StandardHTTPException
 from app.db.models import Devotee
 from app.db.session import get_db
 
@@ -94,13 +95,14 @@ def get_current_user(
         Current authenticated devotee
 
     Raises:
-        HTTPException: If token is invalid or devotee not found
+        StandardHTTPException: If token is invalid or devotee not found
     """
 
-    credentials_exception = HTTPException(
+    credentials_exception = StandardHTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+        message="Could not validate credentials",
+        success=False,
+        data=None,
     )
 
     try:

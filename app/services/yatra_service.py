@@ -7,9 +7,10 @@ This service handles yatra CRUD operations with validation and transaction manag
 import logging
 from datetime import date
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.responses import StandardHTTPException
 from app.db.models import (
     PaymentOption,
     RegistrationStatus,
@@ -67,9 +68,11 @@ class YatraService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to create yatra: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create yatra",
+                message="Failed to create yatra",
+                success=False,
+                data=None,
             )
 
     def get_yatra(self, yatra_id: int) -> Yatra:
@@ -88,9 +91,11 @@ class YatraService:
         yatra = self.db.query(Yatra).filter(Yatra.id == yatra_id).first()
 
         if not yatra:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Yatra not found",
+                message="Yatra not found",
+                success=False,
+                data=None,
             )
 
         return yatra
@@ -177,9 +182,11 @@ class YatraService:
 
         # Check if yatra has already started
         if yatra.start_date <= date.today():
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot update yatra that has already started",
+                message="Cannot update yatra that has already started",
+                success=False,
+                data=None,
             )
 
         try:
@@ -212,9 +219,11 @@ class YatraService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to update yatra: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update yatra",
+                message="Failed to update yatra",
+                success=False,
+                data=None,
             )
 
     def delete_yatra(self, yatra_id: int) -> None:
@@ -235,9 +244,11 @@ class YatraService:
         )
 
         if registration_count > 0:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete yatra with existing registrations",
+                message="Cannot delete yatra with existing registrations",
+                success=False,
+                data=None,
             )
 
         try:
@@ -258,9 +269,11 @@ class YatraService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to delete yatra: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete yatra",
+                message="Failed to delete yatra",
+                success=False,
+                data=None,
             )
 
     def get_registration_stats(self, yatra_id: int) -> dict:

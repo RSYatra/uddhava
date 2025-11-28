@@ -12,6 +12,7 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.responses import StandardHTTPException
 from app.db.models import (
     Gender,
     PaymentOption,
@@ -59,9 +60,11 @@ class YatraRegistrationService:
             # Validate yatra exists and is accepting registrations
             yatra = self.db.query(Yatra).filter(Yatra.id == reg_data.yatra_id).first()
             if not yatra:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Yatra not found",
+                    message="Yatra not found",
+                    success=False,
+                    data=None,
                 )
 
             self._validate_registration_open(yatra)
@@ -70,9 +73,11 @@ class YatraRegistrationService:
             if not validate_payment_option_for_yatra(
                 reg_data.yatra_id, reg_data.payment_option_id, self.db
             ):
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Selected payment option is not available for this yatra",
+                    message="Selected payment option is not available for this yatra",
+                    success=False,
+                    data=None,
                 )
 
             # Validate all room categories exist
@@ -80,9 +85,11 @@ class YatraRegistrationService:
                 if not validate_room_category_exists_in_template(
                     reg_data.yatra_id, member.room_category, self.db
                 ):
-                    raise HTTPException(
+                    raise StandardHTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Room category '{member.room_category}' not found for this yatra",
+                        message=f"Room category '{member.room_category}' not found for this yatra",
+                        success=False,
+                        data=None,
                     )
 
             # Generate group ID
@@ -108,9 +115,11 @@ class YatraRegistrationService:
 
             # Verify primary registrant is the current devotee
             if primary_member.devotee_id != devotee_id:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Primary registrant must be the current user",
+                    message="Primary registrant must be the current user",
+                    success=False,
+                    data=None,
                 )
 
             # Create single registration record (for the group lead)
@@ -187,9 +196,9 @@ class YatraRegistrationService:
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to create registration: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create registration: {str(e)}",
+                message=f"Failed to create registration: {str(e)}",
             )
 
     def _get_registration_by_id_internal(self, reg_id: int) -> dict:
@@ -210,9 +219,11 @@ class YatraRegistrationService:
         )
 
         if not registration:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Registration not found",
+                message="Registration not found",
+                success=False,
+                data=None,
             )
 
         # Get all members for this registration
@@ -239,9 +250,11 @@ class YatraRegistrationService:
 
         # Verify access - only the devotee who created the registration can view it
         if registration.devotee_id != devotee_id:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to view this registration",
+                message="You do not have permission to view this registration",
+                success=False,
+                data=None,
             )
 
         return result
@@ -309,16 +322,20 @@ class YatraRegistrationService:
         )
 
         if not registrations:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No registrations found for this group",
+                message="No registrations found for this group",
+                success=False,
+                data=None,
             )
 
         # Verify access - only the devotee who created the registration can view it
         if registrations[0].devotee_id != devotee_id:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to view this group",
+                message="You do not have permission to view this group",
+                success=False,
+                data=None,
             )
 
         # Get all members for these registrations
@@ -368,9 +385,11 @@ class YatraRegistrationService:
         )
 
         if not registration:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Registration not found",
+                message="Registration not found",
+                success=False,
+                data=None,
             )
 
         # Update fields
@@ -403,9 +422,11 @@ class YatraRegistrationService:
         )
 
         if not registration:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Registration not found",
+                message="Registration not found",
+                success=False,
+                data=None,
             )
 
         registration.status = new_status
@@ -435,15 +456,19 @@ class YatraRegistrationService:
         )
 
         if not registration:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Registration not found",
+                message="Registration not found",
+                success=False,
+                data=None,
             )
 
         if registration.status != RegistrationStatus.PENDING:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only delete registrations in PENDING status",
+                message="Can only delete registrations in PENDING status",
+                success=False,
+                data=None,
             )
 
         # Delete members first (cascade should handle this, but being explicit)
@@ -468,13 +493,17 @@ class YatraRegistrationService:
         today = date.today()
 
         if today > yatra.registration_deadline:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Registration deadline has passed",
+                message="Registration deadline has passed",
+                success=False,
+                data=None,
             )
 
         if not yatra.is_active:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Yatra is not active and not accepting registrations",
+                message="Yatra is not active and not accepting registrations",
+                success=False,
+                data=None,
             )

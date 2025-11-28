@@ -8,11 +8,12 @@ status, database connectivity, and system information.
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
+from app.core.responses import StandardHTTPException
 from app.db.session import check_database_health, engine
 from app.schemas.health import HealthResponse
 
@@ -46,15 +47,19 @@ def health_check():
 
     except SQLAlchemyError:
         logger.exception("Database health check failed")
-        raise HTTPException(
+        raise StandardHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database connection failed",
+            message="Database connection failed",
+            success=False,
+            data=None,
         ) from None
     except Exception:
         logger.exception("Health check failed")
-        raise HTTPException(
+        raise StandardHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Health check failed",
+            message="Health check failed",
+            success=False,
+            data=None,
         ) from None
 
 
@@ -82,7 +87,9 @@ def database_health_check():
         }
     else:
         logger.error(f"Database health check failed: {db_health.get('error')}")
-        raise HTTPException(
+        raise StandardHTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database is unhealthy: {db_health.get('error')}",
+            message=f"Database is unhealthy: {db_health.get('error')}",
+            success=False,
+            data=None,
         )

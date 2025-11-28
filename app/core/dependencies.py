@@ -5,8 +5,9 @@ These dependencies provide reusable access control without using *args, **kwargs
 ensuring FastAPI can properly introspect function signatures for OpenAPI generation.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, status
 
+from app.core.responses import StandardHTTPException
 from app.core.security import get_current_user
 from app.db.models import Devotee, UserRole
 
@@ -24,7 +25,7 @@ def require_admin(
         Devotee: The current user if they are an admin
 
     Raises:
-        HTTPException: 403 if user is not an admin
+        StandardHTTPException: 403 if user is not an admin
 
     Usage:
         @router.get("/admin-only")
@@ -36,9 +37,11 @@ def require_admin(
             ...
     """
     if current_user.role != UserRole.ADMIN:
-        raise HTTPException(
+        raise StandardHTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            message="Admin access required",
+            success=False,
+            data=None,
         )
     return current_user
 
@@ -59,7 +62,7 @@ def check_resource_access(
         resource_name: Name of the resource (for error message)
 
     Raises:
-        HTTPException: 403 if user doesn't have access
+        StandardHTTPException: 403 if user doesn't have access
 
     Usage:
         @router.get("/devotees/{devotee_id}")
@@ -73,7 +76,9 @@ def check_resource_access(
             ...
     """
     if current_user.role != UserRole.ADMIN and current_user.id != resource_owner_id:
-        raise HTTPException(
+        raise StandardHTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied: You can only access your own {resource_name} or need admin privileges",
+            message=f"Access denied: You can only access your own {resource_name} or need admin privileges",
+            success=False,
+            data=None,
         )
