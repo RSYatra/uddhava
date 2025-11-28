@@ -10,6 +10,7 @@ import mimetypes
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from google.cloud import storage
@@ -154,7 +155,13 @@ class StorageService:
             if not sanitized_purpose:
                 sanitized_purpose = "file"
 
-            filename = f"{sanitized_purpose}{file_ext}"
+            # Payment screenshots: Use directory structure with UUID for multiple uploads
+            # Format: {group_id}/{uuid}.{ext} (e.g., grp-2026-5-002/8e6cca15.jpg)
+            # Regular files: Use purpose as filename (e.g., profile_photo.jpg)
+            if sanitized_purpose.startswith("grp-"):
+                filename = f"{sanitized_purpose}/{uuid4().hex[:8]}{file_ext}"
+            else:
+                filename = f"{sanitized_purpose}{file_ext}"
 
             # Create GCS path: {user_id}/{filename}
             gcs_path = f"{user_id}/{filename}"
