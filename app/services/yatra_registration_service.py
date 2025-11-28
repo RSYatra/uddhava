@@ -509,3 +509,131 @@ class YatraRegistrationService:
                 success=False,
                 data=None,
             )
+
+    def update_payment_status(
+        self,
+        registration_id: int,
+        payment_status: PaymentStatus,
+        rejection_reason: str | None = None,
+    ) -> dict:
+        """
+        Update payment status for a registration (admin only).
+
+        When payment_status is COMPLETED, automatically updates registration status to CONFIRMED.
+        When payment_status is FAILED, stores rejection_reason in logs.
+
+        Args:
+            registration_id: Registration ID
+            payment_status: New payment status (COMPLETED or FAILED)
+            rejection_reason: Reason for rejection (required if FAILED)
+
+        Returns:
+            Updated registration details
+
+        Raises:
+            StandardHTTPException: If registration not found or invalid status transition
+        """
+        registration = (
+            self.db.query(YatraRegistration).filter(YatraRegistration.id == registration_id).first()
+        )
+
+        if not registration:
+            raise StandardHTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Registration not found",
+                success=False,
+                data=None,
+            )
+
+        # Validate status transition (only allow PENDING -> COMPLETED/FAILED)
+        if registration.payment_status not in [PaymentStatus.PENDING, PaymentStatus.FAILED]:
+            raise StandardHTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message=f"Cannot update payment status from {registration.payment_status.value}",
+                success=False,
+                data=None,
+            )
+
+        # Update payment status
+        registration.payment_status = payment_status
+
+        # If payment is completed, auto-approve registration
+        if payment_status == PaymentStatus.COMPLETED:
+            registration.status = RegistrationStatus.CONFIRMED
+            logger.info(
+                f"Payment approved for registration {registration_id}. Status updated to CONFIRMED."
+            )
+
+        # If payment is failed, log rejection reason
+        if payment_status == PaymentStatus.FAILED and rejection_reason:
+            logger.warning(
+                f"Payment rejected for registration {registration_id}. Reason: {rejection_reason}"
+            )
+
+        self.db.commit()
+        self.db.refresh(registration)
+
+        return self._get_registration_by_id_internal(registration_id)
+
+    def get_payment_screenshots(
+        self, registration_id: int, user_id: int, is_admin: bool
+    ) -> list[dict]:
+        """
+        Get all payment screenshots for a registration.
+
+        Args:
+            registration_id: Registration ID
+            user_id: User ID (for access control)
+            is_admin: Whether the user is an admin
+
+        Returns:
+            List of file metadata for payment screenshots
+
+        Raises:
+            StandardHTTPException: If registration not found or access denied
+        """
+        from app.services.storage_service import StorageService
+
+        registration = (
+            self.db.query(YatraRegistration).filter(YatraRegistration.id == registration_id).first()
+        )
+
+        if not registration:
+            raise StandardHTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Registration not found",
+                success=False,
+                data=None,
+            )
+
+        # Check access: admin or registration owner
+        if not is_admin and registration.devotee_id != user_id:
+            raise StandardHTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                message="Access denied: You can only view your own payment screenshots",
+                success=False,
+                data=None,
+            )
+
+        # Get group_id and convert to lowercase for matching
+        group_id = registration.group_id
+        group_id_lower = group_id.lower()
+
+        # List all files for the devotee
+        storage_service = StorageService()
+        all_files = storage_service.list_user_files(registration.devotee_id)
+
+        # Filter files in the group_id directory (payment screenshots)
+        # Match files like: grp-2026-4-001/a1b2c3d4.jpg
+        # The gcs_path format is: {user_id}/{group_id}/{uuid}.{ext}
+        payment_screenshots = [
+            file
+            for file in all_files
+            if file["gcs_path"].lower().startswith(f"{registration.devotee_id}/{group_id_lower}/")
+        ]
+
+        logger.info(
+            f"Retrieved {len(payment_screenshots)} payment screenshots for registration {registration_id}"
+        )
+
+        return payment_screenshots
