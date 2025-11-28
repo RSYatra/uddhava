@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.schemas.payment_option import PaymentOptionOut
 from app.schemas.yatra_member import YatraMemberOut
 from app.schemas.yatra_registration import (
+    PaymentStatusUpdate,
     RegistrationCreate,
     RegistrationOut,
 )
@@ -252,6 +253,158 @@ def get_group_registrations(
                 "success": False,
                 "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "message": "Failed to get group registrations",
+                "data": None,
+            },
+        )
+
+
+@router.put(
+    "/{registration_id}/payment-status",
+    summary="Update Payment Status (Admin)",
+    description="""
+Admin endpoint to approve or reject payment after reviewing screenshots.
+
+**REQUIRED FIELDS:**
+- payment_status (string): "COMPLETED" or "FAILED"
+- rejection_reason (string): Required if payment_status is "FAILED"
+
+**BEHAVIOR:**
+- When COMPLETED: payment_status → COMPLETED, registration status → CONFIRMED
+- When FAILED: payment_status → FAILED, rejection_reason logged
+
+**ACCESS:** Admin only
+""",
+)
+def update_payment_status(
+    registration_id: int,
+    status_update: PaymentStatusUpdate,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update payment status for a registration (admin only)."""
+    from app.core.dependencies import require_admin
+
+    # Verify admin access
+    require_admin(current_user)
+
+    try:
+        service = YatraRegistrationService(db)
+        result = service.update_payment_status(
+            registration_id=registration_id,
+            payment_status=status_update.payment_status,
+            rejection_reason=status_update.rejection_reason,
+        )
+
+        registration_out = RegistrationOut.model_validate(result["registration"]).model_dump(
+            mode="json"
+        )
+        members_out = [
+            YatraMemberOut.model_validate(m).model_dump(mode="json") for m in result["members"]
+        ]
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": f"Payment status updated to {status_update.payment_status.value}",
+                "data": {
+                    "registration": registration_out,
+                    "members": members_out,
+                },
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
+    except ValidationError as e:
+        logger.error(f"Validation error updating payment status: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "success": False,
+                "status_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "message": "Invalid payment status update data",
+                "data": {"errors": e.errors()},
+            },
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error updating payment status: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message": "Failed to update payment status",
+                "data": None,
+            },
+        )
+
+
+@router.get(
+    "/{registration_id}/payment-proof",
+    summary="Get Payment Screenshots",
+    description="""
+View all payment screenshots for a registration.
+
+Returns a list of uploaded payment screenshots with their metadata (name, URL, size, upload date).
+
+**ACCESS:** Admin or registration owner only
+""",
+)
+def get_payment_screenshots(
+    registration_id: int,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get all payment screenshots for a registration."""
+    from app.db.models import UserRole
+
+    try:
+        service = YatraRegistrationService(db)
+        is_admin = current_user.role == UserRole.ADMIN
+
+        screenshots = service.get_payment_screenshots(
+            registration_id=registration_id, user_id=current_user.id, is_admin=is_admin
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": f"Retrieved {len(screenshots)} payment screenshot(s)",
+                "data": {
+                    "registration_id": registration_id,
+                    "screenshots": screenshots,
+                },
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error getting payment screenshots: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message": "Failed to get payment screenshots",
                 "data": None,
             },
         )
