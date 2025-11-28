@@ -5,8 +5,10 @@ Provides simple, clean interface for uploading, downloading, and managing
 user files in GCS with descriptive filenames.
 """
 
+import json
 import logging
 import mimetypes
+import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +17,7 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile, status
 from google.cloud import storage
 from google.cloud.exceptions import GoogleCloudError
+from google.oauth2 import service_account
 
 from app.core.config import settings
 from app.core.responses import StandardHTTPException
@@ -33,7 +36,23 @@ class StorageService:
     def __init__(self):
         """Initialize GCS client and bucket."""
         try:
-            self.client = storage.Client(project=settings.gcs_project_id)
+            # Try to load credentials from environment variable (for Render/production)
+            gcs_creds_json = os.getenv("GCS_CREDENTIALS_JSON")
+            if gcs_creds_json:
+                # Load from environment variable (Render, production)
+                creds_dict = json.loads(gcs_creds_json)
+                credentials = service_account.Credentials.from_service_account_info(creds_dict)
+                self.client = storage.Client(
+                    project=settings.gcs_project_id, credentials=credentials
+                )
+                logger.info(
+                    "Initialized StorageService with service account credentials from environment"
+                )
+            else:
+                # Use Application Default Credentials (local development, GCP Cloud Run)
+                self.client = storage.Client(project=settings.gcs_project_id)
+                logger.info("Initialized StorageService with Application Default Credentials")
+
             self.bucket = self.client.bucket(settings.gcs_bucket_name)
             logger.info(f"Initialized StorageService for bucket: {settings.gcs_bucket_name}")
         except Exception as e:
