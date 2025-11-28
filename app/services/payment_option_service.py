@@ -64,6 +64,8 @@ class PaymentOptionService:
             raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=f"Failed to create payment option: {str(e)}",
+                success=False,
+                data=None,
             )
 
     def get_payment_option(self, option_id: int) -> PaymentOption:
@@ -146,6 +148,8 @@ class PaymentOptionService:
             raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=f"Failed to update payment option: {str(e)}",
+                success=False,
+                data=None,
             )
 
     def delete_payment_option(self, option_id: int) -> None:
@@ -172,6 +176,8 @@ class PaymentOptionService:
             raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=f"Failed to delete payment option: {str(e)}",
+                success=False,
+                data=None,
             )
 
     def add_payment_option_to_yatra(self, yatra_id: int, option_id: int) -> None:
@@ -219,6 +225,8 @@ class PaymentOptionService:
             raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=f"Failed to add payment option to yatra: {str(e)}",
+                success=False,
+                data=None,
             )
 
     def remove_payment_option_from_yatra(self, yatra_id: int, option_id: int) -> None:
@@ -261,4 +269,6 @@ class PaymentOptionService:
             raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=f"Failed to remove payment option from yatra: {str(e)}",
+                success=False,
+                data=None,
             )
