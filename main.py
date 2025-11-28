@@ -195,13 +195,39 @@ def setup_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        """Handle HTTP exceptions with proper logging."""
+        """
+        Handle HTTP exceptions with standardized response format.
+
+        Converts all HTTPException instances (including StandardHTTPException)
+        to the standard API response format for consistency.
+        """
         logger.warning(
             f"HTTP {exc.status_code} error on {request.method} {request.url.path}: {exc.detail}"
         )
+
+        # Check if this is our custom StandardHTTPException with additional fields
+        from app.core.responses import StandardHTTPException
+
+        if isinstance(exc, StandardHTTPException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "success": exc.success,
+                    "status_code": exc.status_code,
+                    "message": exc.message,
+                    "data": exc.data,
+                },
+            )
+
+        # For regular HTTPException, convert to standard format
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.detail, "status_code": exc.status_code},
+            content={
+                "success": False,
+                "status_code": exc.status_code,
+                "message": exc.detail,
+                "data": None,
+            },
         )
 
     @app.exception_handler(RequestValidationError)
@@ -240,7 +266,12 @@ def setup_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(SQLAlchemyError)
     async def database_exception_handler(request: Request, exc: SQLAlchemyError):
-        """Handle database errors."""
+        """
+        Handle database errors with standardized response format.
+
+        Logs detailed error information for debugging while returning
+        a user-friendly error message to the client.
+        """
         # Log detailed error information for debugging
         logger.error(
             f"Database error on {request.method} {request.url.path}: {exc}",
@@ -249,28 +280,37 @@ def setup_exception_handlers(app: FastAPI) -> None:
         )
         # Also print to stdout for Cloud Run logs
         print(f"DATABASE ERROR: {type(exc).__name__}: {exc}", flush=True)
+
         return JSONResponse(
             status_code=500,
             content={
-                "detail": "Internal server error",
-                "error_type": "database_error",
+                "success": False,
                 "status_code": 500,
+                "message": "Internal server error",
+                "data": None,
             },
         )
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
-        """Handle unexpected errors."""
+        """
+        Handle unexpected errors with standardized response format.
+
+        Catches all unhandled exceptions and returns a safe error message
+        to the client while logging detailed information for debugging.
+        """
         logger.error(
             f"Unexpected error on {request.method} {request.url.path}: {exc}",
             exc_info=True,
         )
+
         return JSONResponse(
             status_code=500,
             content={
-                "detail": "Internal server error",
-                "error_type": "unexpected_error",
+                "success": False,
                 "status_code": 500,
+                "message": "Internal server error",
+                "data": None,
             },
         )
 

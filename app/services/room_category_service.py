@@ -7,9 +7,10 @@ custom pricing categories created per yatra by admins.
 
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.responses import StandardHTTPException
 from app.db.models import RoomCategory
 from app.schemas.room_category import RoomCategoryCreate, RoomCategoryUpdate
 
@@ -48,9 +49,11 @@ class RoomCategoryService:
         )
 
         if existing:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Room category '{category_data.name}' already exists for this yatra",
+                message=f"Room category '{category_data.name}' already exists for this yatra",
+                success=False,
+                data=None,
             )
 
         # Create new category
@@ -103,9 +106,11 @@ class RoomCategoryService:
         category = self.db.query(RoomCategory).filter(RoomCategory.id == category_id).first()
 
         if not category:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Room category not found",
+                message="Room category not found",
+                success=False,
+                data=None,
             )
 
         return category
@@ -141,9 +146,11 @@ class RoomCategoryService:
             )
 
             if existing:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Room category '{category_data.name}' already exists for this yatra",
+                    message=f"Room category '{category_data.name}' already exists for this yatra",
+                    success=False,
+                    data=None,
                 )
 
         # Update fields
@@ -227,9 +234,11 @@ class RoomCategoryService:
         )
 
         if not category:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Room category '{category_name}' not found for this yatra",
+                message=f"Room category '{category_name}' not found for this yatra",
+                success=False,
+                data=None,
             )
 
         return Decimal(str(category.price_per_person))

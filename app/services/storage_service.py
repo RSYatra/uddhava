@@ -16,6 +16,7 @@ from google.cloud import storage
 from google.cloud.exceptions import GoogleCloudError
 
 from app.core.config import settings
+from app.core.responses import StandardHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +86,11 @@ class StorageService:
 
         max_size = settings.max_file_size_mb * 1024 * 1024
         if file_size > max_size:
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds maximum allowed size ({settings.max_file_size_mb}MB)",
+                message=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds maximum allowed size ({settings.max_file_size_mb}MB)",
+                success=False,
+                data=None,
             )
 
         # Check file extension
@@ -98,9 +101,11 @@ class StorageService:
             )
 
             if file_ext not in allowed_extensions:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"File type {file_ext} not allowed. Allowed types: {', '.join(allowed_extensions)}",
+                    message=f"File type {file_ext} not allowed. Allowed types: {', '.join(allowed_extensions)}",
+                    success=False,
+                    data=None,
                 )
 
     def _get_content_type(self, filename: str) -> str:
@@ -195,15 +200,19 @@ class StorageService:
             raise
         except GoogleCloudError as e:
             logger.error(f"GCS error uploading file for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload file to cloud storage. Please try again.",
+                message="Failed to upload file to cloud storage. Please try again.",
+                success=False,
+                data=None,
             )
         except Exception as e:
             logger.error(f"Unexpected error uploading file for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload file. Please try again.",
+                message="Failed to upload file. Please try again.",
+                success=False,
+                data=None,
             )
 
     def download_file(self, user_id: int, filename: str) -> tuple[bytes, str]:
@@ -232,9 +241,11 @@ class StorageService:
 
             # Check if exists
             if not blob.exists():
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="File not found",
+                    message="File not found",
+                    success=False,
+                    data=None,
                 )
 
             # Download content
@@ -249,15 +260,19 @@ class StorageService:
             raise
         except GoogleCloudError as e:
             logger.error(f"GCS error downloading file for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to download file from cloud storage. Please try again.",
+                message="Failed to download file from cloud storage. Please try again.",
+                success=False,
+                data=None,
             )
         except Exception as e:
             logger.error(f"Unexpected error downloading file for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to download file. Please try again.",
+                message="Failed to download file. Please try again.",
+                success=False,
+                data=None,
             )
 
     def delete_file(self, user_id: int, filename: str) -> bool:
@@ -295,15 +310,19 @@ class StorageService:
 
         except GoogleCloudError as e:
             logger.error(f"GCS error deleting file for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete file from cloud storage. Please try again.",
+                message="Failed to delete file from cloud storage. Please try again.",
+                success=False,
+                data=None,
             )
         except Exception as e:
             logger.error(f"Unexpected error deleting file for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete file. Please try again.",
+                message="Failed to delete file. Please try again.",
+                success=False,
+                data=None,
             )
 
     def list_user_files(self, user_id: int) -> list[dict]:
@@ -351,15 +370,19 @@ class StorageService:
 
         except GoogleCloudError as e:
             logger.error(f"GCS error listing files for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to list files from cloud storage. Please try again.",
+                message="Failed to list files from cloud storage. Please try again.",
+                success=False,
+                data=None,
             )
         except Exception as e:
             logger.error(f"Unexpected error listing files for user {user_id}: {e}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to list files. Please try again.",
+                message="Failed to list files. Please try again.",
+                success=False,
+                data=None,
             )
 
     def file_exists(self, user_id: int, filename: str) -> bool:
