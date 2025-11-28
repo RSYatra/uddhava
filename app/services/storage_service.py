@@ -10,6 +10,7 @@ import mimetypes
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from google.cloud import storage
@@ -154,7 +155,13 @@ class StorageService:
             if not sanitized_purpose:
                 sanitized_purpose = "file"
 
-            filename = f"{sanitized_purpose}{file_ext}"
+            # Payment screenshots: Use directory structure with UUID for multiple uploads
+            # Format: {group_id}/{uuid}.{ext} (e.g., grp-2026-5-002/8e6cca15.jpg)
+            # Regular files: Use purpose as filename (e.g., profile_photo.jpg)
+            if sanitized_purpose.startswith("grp-"):
+                filename = f"{sanitized_purpose}/{uuid4().hex[:8]}{file_ext}"
+            else:
+                filename = f"{sanitized_purpose}{file_ext}"
 
             # Create GCS path: {user_id}/{filename}
             gcs_path = f"{user_id}/{filename}"
@@ -221,7 +228,7 @@ class StorageService:
 
         Args:
             user_id: User ID
-            filename: Filename to download
+            filename: Filename or path to download (e.g., "profile_photo.jpg" or "grp-2026-4-001/abc123.jpg")
 
         Returns:
             tuple: (file_content, content_type)
@@ -230,8 +237,21 @@ class StorageService:
             HTTPException: If download fails or file not found
         """
         try:
-            # Sanitize filename to prevent path traversal
-            sanitized_filename = self._sanitize_filename(filename)
+            # For directory-based paths (containing /), don't sanitize to preserve structure
+            # For simple filenames, sanitize to prevent path traversal
+            if "/" in filename:
+                # Directory-based path - validate it doesn't try to escape user directory
+                if filename.startswith("../") or "/../" in filename:
+                    raise StandardHTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message="Invalid file path",
+                        success=False,
+                        data=None,
+                    )
+                sanitized_filename = filename.lower()  # Just lowercase for consistency
+            else:
+                # Simple filename - full sanitization
+                sanitized_filename = self._sanitize_filename(filename)
 
             # Create GCS path
             gcs_path = f"{user_id}/{sanitized_filename}"

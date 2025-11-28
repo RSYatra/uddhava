@@ -6,7 +6,7 @@ This module contains schemas for registration API request/response validation.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models import PaymentStatus, RegistrationStatus
 from app.schemas.yatra_member import YatraMemberCreate, YatraMemberOut
@@ -97,3 +97,26 @@ class StatusUpdateRequest(BaseModel):
 
     status: RegistrationStatus = Field(..., description="New registration status")
     payment_status: PaymentStatus | None = Field(None, description="New payment status (optional)")
+
+
+class PaymentStatusUpdate(BaseModel):
+    """
+    Schema for admin payment status update.
+
+    When payment_status is FAILED, rejection_reason is required.
+    When payment_status is COMPLETED, registration status is automatically updated to CONFIRMED.
+    """
+
+    payment_status: PaymentStatus = Field(
+        ..., description="New payment status (COMPLETED or FAILED)"
+    )
+    rejection_reason: str | None = Field(
+        None, description="Reason for rejection (required if payment_status is FAILED)"
+    )
+
+    @model_validator(mode="after")
+    def validate_rejection_reason(self) -> "PaymentStatusUpdate":
+        """Ensure rejection_reason is provided when payment_status is FAILED."""
+        if self.payment_status == PaymentStatus.FAILED and not self.rejection_reason:
+            raise ValueError("rejection_reason is required when payment_status is FAILED")
+        return self
