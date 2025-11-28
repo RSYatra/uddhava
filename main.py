@@ -25,7 +25,7 @@ from app.api.routes import (
     devotees,
     health,
     payment_options,
-    pricing_templates,
+    room_categories,
     spiritual_masters,
     yatra_registrations,
     yatras,
@@ -292,12 +292,10 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(country_codes.router, prefix="/api/v1")
     app.include_router(spiritual_masters.router, prefix="/api/v1")
 
-    # Pricing and payment management routes (admin only)
-    app.include_router(pricing_templates.router, prefix="/api/v1")
-    app.include_router(payment_options.router, prefix="/api/v1")
-
     # Yatra management routes
     app.include_router(yatras.router, prefix="/api/v1")
+    app.include_router(room_categories.router, prefix="/api/v1")
+    app.include_router(payment_options.router, prefix="/api/v1")
     app.include_router(yatra_registrations.router, prefix="/api/v1")
 
     # Root endpoint - Landing page
