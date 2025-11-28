@@ -32,7 +32,43 @@ router = APIRouter(prefix="/yatra-registrations", tags=["Yatra Registrations"])
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Create Group Registration",
-    description="Create a new group registration with multiple members. Authenticated users only.",
+    description="""
+Create a new group registration with multiple members for a yatra.
+
+**REQUIRED FIELDS:**
+- yatra_id (integer): ID of the yatra to register for
+- payment_option_id (integer): ID of the payment option to use
+- members (array): List of member objects (at least 1 required)
+
+**MEMBER OBJECT FIELDS:**
+- legal_name (string, required): Full legal name
+- date_of_birth (date, required): DOB in YYYY-MM-DD format (for age calculation)
+- gender (string, required): "M" or "F"
+- room_category (string, required): Room category name (must match available categories)
+- room_preference (string, required): "MALE_SHARING", "FEMALE_SHARING", "FAMILY", or "FAMILY_WITH_CHILDREN"
+- is_primary_registrant (boolean, required): Exactly one member must be true
+- devotee_id (integer, optional): Link to registered devotee (required for primary registrant)
+- mobile_number (string, optional): Contact number
+- email (string, optional): Email address
+- arrival_datetime (datetime, optional): Arrival date and time
+- departure_datetime (datetime, optional): Departure date and time
+- dietary_requirements (string, optional): Special dietary needs
+- medical_conditions (string, optional): Medical conditions to be aware of
+
+**PRICING:**
+- Children under 5 years (at yatra start date): FREE
+- Everyone 5 and above: Price per room category
+- Total amount calculated automatically
+
+**RESPONSE:**
+- group_id: Human-readable format (e.g., "GRP-2026-1-001")
+- registration: Registration details
+- members: List of all members with calculated prices
+- total_amount: Total amount for the group
+- payment_options: Available payment methods
+
+**AUTHENTICATION:** Required (any logged-in user)
+""",
 )
 def create_registration(
     reg_data: RegistrationCreate,
@@ -45,10 +81,9 @@ def create_registration(
         result = service.create_registration(current_user.id, reg_data)
 
         # Format response
-        registrations_out = [
-            RegistrationOut.model_validate(r).model_dump(mode="json")
-            for r in result["registrations"]
-        ]
+        registration_out = RegistrationOut.model_validate(result["registration"]).model_dump(
+            mode="json"
+        )
         members_out = [
             YatraMemberOut.model_validate(m).model_dump(mode="json") for m in result["members"]
         ]
@@ -65,7 +100,7 @@ def create_registration(
                 "message": "Registration created successfully",
                 "data": {
                     "group_id": result["group_id"],
-                    "registrations": registrations_out,
+                    "registration": registration_out,
                     "members": members_out,
                     "total_amount": result["total_amount"],
                     "payment_options": payment_options_out,
@@ -195,7 +230,7 @@ def get_group_registrations(
                     "group_id": result["group_id"],
                     "registrations": registrations_out,
                     "members": members_out,
-                    "total_amount": result["total_amount"],
+                    "total_amount": int(result["total_amount"]),
                 },
             },
         )

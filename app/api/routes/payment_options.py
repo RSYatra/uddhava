@@ -1,16 +1,15 @@
 """
-API routes for payment option management.
+Payment option API endpoints.
 
-This module provides CRUD endpoints for payment options (admin only).
+This module provides CRUD endpoints for managing reusable payment options
+that can be associated with multiple yatras.
 """
 
-import logging
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_admin
+from app.core.dependencies import get_current_user, require_admin
 from app.db.models import Devotee
 from app.db.session import get_db
 from app.schemas.payment_option import (
@@ -20,167 +19,183 @@ from app.schemas.payment_option import (
 )
 from app.services.payment_option_service import PaymentOptionService
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/payment-options", tags=["Payment Options"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Payment Option (Admin)",
+    description="""
+Create a new reusable payment option that can be associated with multiple yatras.
+
+**REQUIRED FIELDS:**
+- name (string): Display name for the payment option
+- method (string): Payment method - "UPI", "BANK_TRANSFER", "QR_CODE", "CASH", or "CHEQUE"
+- instructions (string): Payment instructions for users
+
+**CONDITIONAL REQUIRED FIELDS (based on method):**
+
+For **UPI**:
+- upi_id (string, required): UPI ID (e.g., "yatra@upi")
+
+For **BANK_TRANSFER**:
+- account_holder (string, required): Account holder name
+- account_number (string, required): Bank account number
+- ifsc_code (string, required): IFSC code
+- bank_name (string, required): Bank name
+- branch (string, optional): Branch name
+
+For **QR_CODE**:
+- qr_code_url (string, required): URL to QR code image
+
+For **CASH** or **CHEQUE**:
+- No additional fields required
+
+**OPTIONAL FIELDS:**
+- is_active (boolean): Whether the option is active (default: true)
+
+**AUTHENTICATION:** Admin only
+""",
+)
 def create_payment_option(
-    payment_data: PaymentOptionCreate,
-    current_user: Devotee = Depends(require_admin),
+    option_data: PaymentOptionCreate,
+    admin: Devotee = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Create a new payment option (admin only)."""
-    try:
-        service = PaymentOptionService(db)
-        payment_option = service.create_payment_option(payment_data)
+    """Create new payment option. Admin only."""
+    service = PaymentOptionService(db)
+    payment_option = service.create_payment_option(option_data)
 
-        return JSONResponse(
-            status_code=status.HTTP_201_CREATED,
-            content={
-                "success": True,
-                "status_code": 201,
-                "message": "Payment option created successfully",
-                "data": PaymentOptionOut.model_validate(payment_option).model_dump(mode="json"),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating payment option: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create payment option",
-        )
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content={
+            "success": True,
+            "status_code": status.HTTP_201_CREATED,
+            "message": "Payment option created successfully",
+            "data": PaymentOptionOut.model_validate(payment_option).model_dump(mode="json"),
+        },
+    )
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="List Payment Options",
+    description="Get all payment options. Optionally filter by active status. Requires authentication.",
+)
 def list_payment_options(
-    active_only: bool = True,
+    active_only: bool = False,
+    current_user: Devotee = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all payment options."""
-    try:
-        service = PaymentOptionService(db)
-        payment_options = service.list_payment_options(active_only=active_only)
+    """List all payment options. Requires authentication."""
+    service = PaymentOptionService(db)
+    payment_options = service.list_payment_options(active_only=active_only)
 
-        # Build response manually
-        options_out = []
-        for option in payment_options:
-            option_dict = {
-                "id": option.id,
-                "name": option.name,
-                "payment_method": option.payment_method,
-                "bank_account_number": option.bank_account_number,
-                "ifsc_code": option.ifsc_code,
-                "bank_name": option.bank_name,
-                "branch_name": option.branch_name,
-                "account_holder_name": option.account_holder_name,
-                "account_type": option.account_type,
-                "upi_id": option.upi_id,
-                "upi_phone_number": option.upi_phone_number,
-                "qr_code_path": option.qr_code_path,
-                "is_active": option.is_active,
-                "notes": option.notes,
-                "created_at": option.created_at.isoformat() if option.created_at else None,
-                "updated_at": option.updated_at.isoformat() if option.updated_at else None,
-            }
-            options_out.append(option_dict)
-
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "success": True,
-                "status_code": 200,
-                "message": "Payment options retrieved successfully",
-                "data": options_out,
-            },
-        )
-    except Exception as e:
-        logger.error(f"Error listing payment options: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list payment options",
-        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "success": True,
+            "status_code": status.HTTP_200_OK,
+            "message": "Payment options retrieved successfully",
+            "data": [
+                PaymentOptionOut.model_validate(po).model_dump(mode="json")
+                for po in payment_options
+            ],
+        },
+    )
 
 
-@router.get("/{payment_option_id}")
+@router.get(
+    "/{option_id}",
+    summary="Get Payment Option",
+    description="Get payment option details by ID. Requires authentication.",
+)
 def get_payment_option(
-    payment_option_id: int,
+    option_id: int,
+    current_user: Devotee = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a specific payment option by ID."""
-    try:
-        service = PaymentOptionService(db)
-        payment_option = service.get_payment_option(payment_option_id)
+    """Get payment option by ID. Requires authentication."""
+    service = PaymentOptionService(db)
+    payment_option = service.get_payment_option(option_id)
 
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "success": True,
-                "status_code": 200,
-                "message": "Payment option retrieved successfully",
-                "data": PaymentOptionOut.model_validate(payment_option).model_dump(mode="json"),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting payment option: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get payment option",
-        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "success": True,
+            "status_code": status.HTTP_200_OK,
+            "message": "Payment option retrieved successfully",
+            "data": PaymentOptionOut.model_validate(payment_option).model_dump(mode="json"),
+        },
+    )
 
 
-@router.put("/{payment_option_id}")
+@router.put(
+    "/{option_id}",
+    summary="Update Payment Option (Admin)",
+    description="""
+Update an existing payment option.
+
+**ALL FIELDS OPTIONAL:**
+- name (string): Updated display name
+- method (string): Updated payment method
+- instructions (string): Updated instructions
+- upi_id (string): Updated UPI ID (for UPI method)
+- account_holder (string): Updated account holder (for BANK_TRANSFER)
+- account_number (string): Updated account number (for BANK_TRANSFER)
+- ifsc_code (string): Updated IFSC code (for BANK_TRANSFER)
+- bank_name (string): Updated bank name (for BANK_TRANSFER)
+- branch (string): Updated branch (for BANK_TRANSFER)
+- qr_code_url (string): Updated QR code URL (for QR_CODE)
+- is_active (boolean): Updated active status
+
+**NOTE:** Only provide fields you want to update.
+
+**AUTHENTICATION:** Admin only
+""",
+)
 def update_payment_option(
-    payment_option_id: int,
-    payment_data: PaymentOptionUpdate,
-    current_user: Devotee = Depends(require_admin),
+    option_id: int,
+    update_data: PaymentOptionUpdate,
+    admin: Devotee = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Update a payment option (admin only)."""
-    try:
-        service = PaymentOptionService(db)
-        payment_option = service.update_payment_option(payment_option_id, payment_data)
+    """Update payment option. Admin only."""
+    service = PaymentOptionService(db)
+    payment_option = service.update_payment_option(option_id, update_data)
 
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "success": True,
-                "status_code": 200,
-                "message": "Payment option updated successfully",
-                "data": PaymentOptionOut.model_validate(payment_option).model_dump(mode="json"),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating payment option: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update payment option",
-        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "success": True,
+            "status_code": status.HTTP_200_OK,
+            "message": "Payment option updated successfully",
+            "data": PaymentOptionOut.model_validate(payment_option).model_dump(mode="json"),
+        },
+    )
 
 
-@router.delete("/{payment_option_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{option_id}",
+    summary="Delete Payment Option (Admin)",
+    description="Delete a payment option. Admin only.",
+)
 def delete_payment_option(
-    payment_option_id: int,
-    current_user: Devotee = Depends(require_admin),
+    option_id: int,
+    admin: Devotee = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Delete a payment option (admin only)."""
-    try:
-        service = PaymentOptionService(db)
-        service.delete_payment_option(payment_option_id)
-        return None
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting payment option: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete payment option",
-        )
+    """Delete payment option."""
+    service = PaymentOptionService(db)
+    service.delete_payment_option(option_id)
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "success": True,
+            "status_code": status.HTTP_200_OK,
+            "message": "Payment option deleted successfully",
+            "data": None,
+        },
+    )
