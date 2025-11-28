@@ -217,7 +217,10 @@ class TestAuthentication:
         response = client.get("/api/v1/devotees", headers=headers)
 
         assert response.status_code == 401
-        assert "Could not validate credentials" in response.json()["detail"]
+        response_data = response.json()
+        assert "Could not validate credentials" in response_data.get(
+            "message", response_data.get("detail", "")
+        )
 
     def test_protected_endpoint_with_expired_token(self):
         """Test accessing protected endpoint with expired token."""

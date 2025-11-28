@@ -9,8 +9,10 @@ import logging
 import time
 from collections.abc import Callable
 
-from fastapi import HTTPException, Request, Response, status
+from fastapi import Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.core.responses import StandardHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +64,11 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > 20 * 1024 * 1024:  # 20MB limit
             logger.warning(f"Request too large: {content_length} bytes from {request.client.host}")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Request too large",
+                message="Request too large",
+                success=False,
+                data=None,
             )
 
         # 2. Check for suspicious user agents
@@ -97,9 +101,11 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
 
             # Block if too many suspicious requests
             if self.suspicious_activity[client_ip]["count"] > 5:
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Access denied",
+                    message="Access denied",
+                    success=False,
+                    data=None,
                 )
 
         # 3. Check for common attack patterns in headers
@@ -114,9 +120,11 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
                 or content_type.startswith("multipart/form-data")
             ):
                 logger.warning(f"Invalid content type for auth endpoint: {content_type}")
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid content type",
+                    message="Invalid content type",
+                    success=False,
+                    data=None,
                 )
 
     def _check_attack_patterns(self, request: Request):
@@ -153,9 +161,11 @@ class AuthSecurityMiddleware(BaseHTTPMiddleware):
                         f"Attack pattern detected in header {header_name} "
                         f"from {client_ip}: {pattern}"
                     )
-                    raise HTTPException(
+                    raise StandardHTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Invalid request",
+                        message="Invalid request",
+                        success=False,
+                        data=None,
                     )
 
     def _add_auth_security_headers(self, response: Response):

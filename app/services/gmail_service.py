@@ -17,6 +17,7 @@ from googleapiclient.discovery import build
 from jinja2 import Template
 
 from app.core.config import settings
+from app.core.responses import StandardHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,11 @@ class GmailService:
                 logger.info("Gmail API service initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to build Gmail service: {e}")
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=503,
-                    detail="Gmail API service unavailable",
+                    message="Gmail API service unavailable",
+                    success=False,
+                    data=None,
                 )
         self.template_dir = Path(__file__).parent.parent.parent / "templates" / "emails"
 
@@ -54,9 +57,11 @@ class GmailService:
                     return None
                 # In production, credentials are required
                 logger.error(f"Credentials file not found: {creds_path}")
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=503,
-                    detail="Gmail credentials not configured",
+                    message="Gmail credentials not configured",
+                    success=False,
+                    data=None,
                 )
 
             # Support both pickle and JSON formats
@@ -106,18 +111,22 @@ class GmailService:
 
                 except Exception as e:
                     logger.error(f"Failed to refresh credentials: {e}")
-                    raise HTTPException(
+                    raise StandardHTTPException(
                         status_code=503,
-                        detail="Gmail credentials expired",
+                        message="Gmail credentials expired",
+                        success=False,
+                        data=None,
                     )
 
             return creds
 
         except FileNotFoundError:
             logger.error("Gmail credentials file not found")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=503,
-                detail="Gmail credentials not found",
+                message="Gmail credentials not found",
+                success=False,
+                data=None,
             )
         except HTTPException:
             # Re-raise HTTP exceptions (production mode)
@@ -133,9 +142,11 @@ class GmailService:
             # In production, raise the error
             logger.error(f"Error loading Gmail credentials: {e}")
             logger.exception("Full traceback:")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=503,
-                detail=f"Gmail credentials error: {type(e).__name__}",
+                message=f"Gmail credentials error: {type(e).__name__}",
+                success=False,
+                data=None,
             )
 
     def _load_template(self, template_name: str) -> str:
@@ -195,9 +206,11 @@ class GmailService:
                     )
                     return True
                 # In production, service is required
-                raise HTTPException(
+                raise StandardHTTPException(
                     status_code=503,
-                    detail="Gmail service not initialized",
+                    message="Gmail service not initialized",
+                    success=False,
+                    data=None,
                 )
 
             message = self._create_message(to, subject, html_content)
@@ -212,9 +225,11 @@ class GmailService:
         except Exception as e:
             logger.error(f"Failed to send email to {to}: {type(e).__name__}: {e}")
             logger.exception("Full error traceback:")
-            raise HTTPException(
+            raise StandardHTTPException(
                 status_code=500,
-                detail=f"Failed to send email: {type(e).__name__}",
+                message=f"Failed to send email: {type(e).__name__}",
+                success=False,
+                data=None,
             )
 
     async def send_password_reset_email(
