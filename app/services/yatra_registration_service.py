@@ -199,6 +199,8 @@ class YatraRegistrationService:
             raise StandardHTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=f"Failed to create registration: {str(e)}",
+                success=False,
+                data=None,
             )
 
     def _get_registration_by_id_internal(self, reg_id: int) -> dict:
