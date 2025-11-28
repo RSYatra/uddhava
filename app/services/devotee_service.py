@@ -955,9 +955,9 @@ class DevoteeService:
                 if total_files > settings.max_files_per_user:
                     raise StandardHTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        message=f"Maximum {settings.max_files_per_user} files allowed. You have {
-                            len(existing_files)
-                        } existing files.",
+                        message=f"Maximum {settings.max_files_per_user} files allowed. You have {len(existing_files)} existing files.",
+                        success=False,
+                        data=None,
                     )
 
                 # Save each file and collect metadata
