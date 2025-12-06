@@ -305,3 +305,52 @@ class GmailService:
         except Exception as e:
             logger.error(f"Failed to send verification success email: {e}")
             return False
+
+    async def send_payment_approval_email(
+        self,
+        email: str,
+        user_name: str,
+        yatra_details: dict,
+        group_id: str,
+        payment_amount: int,
+    ) -> bool:
+        """
+        Send payment approval confirmation email.
+
+        Args:
+            email: Recipient email
+            user_name: Devotee's name
+            yatra_details: Dict with yatra info (name, destination, start_date, end_date)
+            group_id: Registration group ID
+            payment_amount: Total payment amount
+
+        Returns:
+            bool: True if sent successfully
+        """
+        logger.info(f"Sending payment approval email to {email}")
+
+        try:
+            registration_url = f"{settings.frontend_base_url}/registrations/{group_id}"
+            support_email = settings.support_email
+
+            html_template = self._load_template("payment_approval.html")
+            template = Template(html_template)
+            html_content = template.render(
+                user_name=user_name,
+                email=email,
+                yatra_name=yatra_details["name"],
+                yatra_destination=yatra_details["destination"],
+                start_date=yatra_details["start_date"],
+                end_date=yatra_details["end_date"],
+                group_id=group_id,
+                payment_amount=f"₹{payment_amount:,}",
+                registration_url=registration_url,
+                support_email=support_email,
+            )
+
+            subject = f"Payment Approved - {yatra_details['name']} Registration Confirmed"
+            return await self.send_email(email, subject, html_content)
+
+        except Exception as e:
+            logger.error(f"Failed to send payment approval email: {e}")
+            return False

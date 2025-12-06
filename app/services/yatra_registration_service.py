@@ -6,7 +6,7 @@ pricing calculation based on room categories, and payment management.
 """
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -91,6 +91,9 @@ class YatraRegistrationService:
                         success=False,
                         data=None,
                     )
+
+            # Validate member travel dates fall within yatra date range
+            self._validate_member_travel_dates(yatra, reg_data.members)
 
             # Generate group ID
             group_id = generate_group_id(reg_data.yatra_id, yatra.start_date, self.db)
@@ -510,6 +513,62 @@ class YatraRegistrationService:
                 data=None,
             )
 
+    def _validate_member_travel_dates(self, yatra: Yatra, members: list) -> None:
+        """
+        Validate member travel dates fall within allowed yatra date range.
+
+        Allows arrival 1 day before yatra starts and departure 1 day after yatra ends.
+
+        Args:
+            yatra: Yatra object with start_date and end_date
+            members: List of YatraMemberCreate objects
+
+        Raises:
+            StandardHTTPException: If travel dates are outside allowed range
+        """
+        # Calculate allowed date range (with 1-day buffer)
+        earliest_arrival = yatra.start_date - timedelta(days=1)
+        latest_departure = yatra.end_date + timedelta(days=1)
+
+        for idx, member in enumerate(members, 1):
+            arrival = member.arrival_datetime
+            departure = member.departure_datetime
+
+            # Skip if dates not provided (optional fields)
+            if not arrival and not departure:
+                continue
+
+            # Validate arrival date
+            if arrival:
+                arrival_date = arrival.date()
+                if arrival_date < earliest_arrival:
+                    raise StandardHTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message=f"Member {idx} ({member.legal_name}): Arrival date cannot be before {earliest_arrival}",
+                        success=False,
+                        data=None,
+                    )
+
+            # Validate departure date
+            if departure:
+                departure_date = departure.date()
+                if departure_date > latest_departure:
+                    raise StandardHTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message=f"Member {idx} ({member.legal_name}): Departure date cannot be after {latest_departure}",
+                        success=False,
+                        data=None,
+                    )
+
+            # Validate arrival < departure
+            if arrival and departure and arrival >= departure:
+                raise StandardHTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    message=f"Member {idx} ({member.legal_name}): Arrival must be before departure",
+                    success=False,
+                    data=None,
+                )
+
     def update_payment_status(
         self,
         registration_id: int,
@@ -573,7 +632,84 @@ class YatraRegistrationService:
         self.db.commit()
         self.db.refresh(registration)
 
+        # Send email notifications if payment approved
+        if payment_status == PaymentStatus.COMPLETED:
+            self._send_payment_approval_emails(registration_id)
+
         return self._get_registration_by_id_internal(registration_id)
+
+    def _send_payment_approval_emails(self, registration_id: int) -> None:
+        """
+        Send payment approval emails to all unique emails in the registration group.
+
+        Args:
+            registration_id: Registration ID
+        """
+        try:
+            # Get registration and members
+            reg_data = self._get_registration_by_id_internal(registration_id)
+            registration = reg_data["registration"]
+            members = reg_data["members"]
+
+            # Get yatra details
+            yatra = self.db.query(Yatra).filter(Yatra.id == registration.yatra_id).first()
+            if not yatra:
+                logger.error(f"Yatra not found for registration {registration_id}")
+                return
+
+            # Collect unique emails with member names
+            email_map = {}  # {email: member_name}
+            for member in members:
+                if member.email and member.email.strip():
+                    email_lower = member.email.strip().lower()
+                    if email_lower not in email_map:
+                        email_map[email_lower] = member.legal_name
+
+            if not email_map:
+                logger.warning(f"No emails found for registration {registration_id}")
+                return
+
+            logger.info(f"Sending approval emails to {len(email_map)} unique addresses")
+
+            # Prepare yatra details
+            yatra_details = {
+                "name": yatra.name,
+                "destination": yatra.destination,
+                "start_date": yatra.start_date.strftime("%B %d, %Y"),
+                "end_date": yatra.end_date.strftime("%B %d, %Y"),
+            }
+
+            # Send emails synchronously
+            self._send_emails_sync(email_map, yatra_details, registration)
+
+        except Exception as e:
+            logger.error(f"Error in _send_payment_approval_emails: {e}")
+            logger.exception("Full traceback:")
+
+    def _send_emails_sync(self, email_map: dict, yatra_details: dict, registration) -> None:
+        """Send emails synchronously without async/await."""
+        import asyncio
+
+        from app.services.gmail_service import GmailService
+
+        gmail_service = GmailService()
+
+        for email, name in email_map.items():
+            try:
+                # Run async function in sync context
+                asyncio.run(
+                    gmail_service.send_payment_approval_email(
+                        email=email,
+                        user_name=name,
+                        yatra_details=yatra_details,
+                        group_id=registration.group_id,
+                        payment_amount=registration.payment_amount,
+                    )
+                )
+                logger.info(f"Sent approval email to {email}")
+            except Exception as e:
+                logger.error(f"Failed to send email to {email}: {e}")
+                # Continue with other emails
 
     def get_payment_screenshots(
         self, registration_id: int, user_id: int, is_admin: bool
