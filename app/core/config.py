@@ -117,6 +117,10 @@ class Settings(BaseSettings):
 
     # Frontend URLs
     frontend_login_url: str = "https://rsyatra.com/login"
+    frontend_base_url: str = "https://rsyatra.com"
+
+    # Support Contact
+    support_email: str = "support@rsyatra.com"
 
     @field_validator("jwt_secret_key")
     def validate_jwt_secret(cls, v):
