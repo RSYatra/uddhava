@@ -142,6 +142,96 @@ def create_registration(
 
 
 @router.get(
+    "/devotee/{devotee_id}",
+    summary="Get All Registrations for a Devotee",
+    description="""
+Get all registrations for a specific devotee.
+
+Returns a list of all registrations with summary information including:
+- Registration details (ID, group ID, status, payment status)
+- Yatra information (name, destination, dates)
+- Member count
+- Payment amount
+
+**Access:** Admin can view any devotee's registrations, users can only view their own
+""",
+)
+def get_devotee_registrations(
+    devotee_id: int,
+    current_user: Devotee = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get all registrations for a devotee."""
+    from app.db.models import UserRole
+
+    try:
+        # Check access: admin can view any, user can only view their own
+        is_admin = current_user.role == UserRole.ADMIN
+        if not is_admin and current_user.id != devotee_id:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={
+                    "success": False,
+                    "status_code": status.HTTP_403_FORBIDDEN,
+                    "message": "You can only view your own registrations",
+                    "data": None,
+                },
+            )
+
+        service = YatraRegistrationService(db)
+        registrations = service.get_registrations_for_devotee(devotee_id)
+
+        # Format response with registration and member details
+        result = []
+        for item in registrations:
+            reg = item["registration"]
+            members = item["members"]
+
+            registration_out = RegistrationOut.model_validate(reg).model_dump(mode="json")
+            members_out = [
+                YatraMemberOut.model_validate(m).model_dump(mode="json") for m in members
+            ]
+
+            result.append(
+                {
+                    "registration": registration_out,
+                    "members": members_out,
+                }
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "status_code": status.HTTP_200_OK,
+                "message": f"Retrieved {len(result)} registration(s) for devotee {devotee_id}",
+                "data": result,
+            },
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "success": False,
+                "status_code": e.status_code,
+                "message": e.detail,
+                "data": None,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error getting devotee registrations: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "message": "Failed to get registrations",
+                "data": None,
+            },
+        )
+
+
+@router.get(
     "/{registration_id}",
     summary="Get Registration Details",
     description="Get registration details with member information. Authenticated users only.",
