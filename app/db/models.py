@@ -272,7 +272,7 @@ class PaymentOption(Base):
     branch = Column(String(255), nullable=True)
 
     # QR Code
-    qr_code_url = Column(String(500), nullable=True)
+    qr_code_url = Column(Text, nullable=True)
 
     # General
     instructions = Column(Text, nullable=True)

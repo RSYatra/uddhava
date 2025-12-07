@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     # File Upload Configuration
     max_upload_size_mb: int = 20  # Total size limit per user
-    max_file_size_mb: int = 5  # Individual file size limit
+    max_file_size_mb: int = 10  # Individual file size limit
     max_files_per_user: int = 5  # Maximum number of files per user
     allowed_image_extensions: list = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
     # Documents can be PDFs, Office docs, text files, or images (for scanned documents)
