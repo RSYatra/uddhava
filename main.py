@@ -160,6 +160,7 @@ def setup_middleware(app: FastAPI) -> None:
         "https://rsyatra.com",  # Production frontend (custom domain)
         "https://www.rsyatra.com",  # Production frontend with www (custom domain)
         "https://rsyatra.onrender.com",  # Production frontend (Render subdomain - legacy)
+        "https://dev-rsyatra.onrender.com",  # Development frontend (Render subdomain)
         "http://localhost:1728",  # Local frontend for development
         "http://localhost:8000",  # Backend testing
     ]
