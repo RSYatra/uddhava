@@ -91,6 +91,7 @@ class Settings(BaseSettings):
         "https://rsyatra.com",  # Production frontend (custom domain)
         "https://www.rsyatra.com",  # Production frontend with www (custom domain)
         "https://rsyatra.onrender.com",  # Production frontend (Render subdomain - legacy)
+        "https://dev-rsyatra.onrender.com",  # Development frontend (Render subdomain)
         "http://localhost:1728",  # Local frontend for development
         "http://localhost:8000",  # Backend testing
     ]
@@ -120,7 +121,7 @@ class Settings(BaseSettings):
     frontend_base_url: str = "https://rsyatra.com"
 
     # Support Contact
-    support_email: str = "support@rsyatra.com"
+    support_email: str = "radhashyamsundaryatra@gmail.com"
 
     @field_validator("jwt_secret_key")
     def validate_jwt_secret(cls, v):
