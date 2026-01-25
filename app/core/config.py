@@ -10,7 +10,7 @@ import warnings
 from functools import lru_cache
 from urllib.parse import quote_plus
 
-from pydantic import field_validator, Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -64,49 +64,45 @@ class Settings(BaseSettings):
             return None
         return int(v)
 
-    @field_validator("allowed_image_extensions", "allowed_document_extensions", mode="before")
-    @classmethod
-    def parse_list_fields(cls, v, info):
-        """Parse list fields from JSON or comma-separated strings."""
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            v = v.strip()
-            if not v:
-                # Return default based on field name
-                if info.field_name == "allowed_image_extensions":
-                    return [".jpg", ".jpeg", ".png", ".gif", ".webp"]
-                else:
-                    return [".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp"]
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                return [x.strip() for x in v.split(',') if x.strip()]
-        return v
-
     # File Upload Configuration
     max_upload_size_mb: int = 20  # Total size limit per user
     max_file_size_mb: int = 10  # Individual file size limit
     max_files_per_user: int = 5  # Maximum number of files per user
-    allowed_image_extensions: list = Field(
-        default=[".jpg", ".jpeg", ".png", ".gif", ".webp"],
-        json_schema_extra={"from_attributes": True}
+    
+    # Store as strings to prevent Pydantic Settings from trying to JSON parse
+    # Use the properties below to get them as lists
+    allowed_image_extensions_str: str = Field(
+        default=".jpg,.jpeg,.png,.gif,.webp",
+        alias="ALLOWED_IMAGE_EXTENSIONS"
     )
-    # Documents can be PDFs, Office docs, text files, or images (for scanned documents)
-    allowed_document_extensions: list = Field(
-        default=[
-            ".pdf",
-            ".doc",
-            ".docx",
-            ".txt",
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".gif",
-            ".webp",
-        ],
-        json_schema_extra={"from_attributes": True}
+    allowed_document_extensions_str: str = Field(
+        default=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp",
+        alias="ALLOWED_DOCUMENT_EXTENSIONS"
     )
+
+    @property
+    def allowed_image_extensions(self) -> list[str]:
+        """Get allowed image extensions as a list."""
+        return self._parse_extensions(self.allowed_image_extensions_str)
+
+    @property
+    def allowed_document_extensions(self) -> list[str]:
+        """Get allowed document extensions as a list."""
+        return self._parse_extensions(self.allowed_document_extensions_str)
+
+    def _parse_extensions(self, value: str) -> list[str]:
+        """Parse extension string into list. Handles JSON or comma-separated."""
+        if not value or not value.strip():
+            return []
+        value = value.strip()
+        # Try JSON first
+        if value.startswith('['):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                pass
+        # Fall back to comma-separated
+        return [x.strip() for x in value.split(',') if x.strip()]
 
     # Google Cloud Storage Configuration
     gcs_bucket_name: str = "uddhava-user-files"
@@ -205,6 +201,7 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",
+        "populate_by_name": True,  # Allow both alias and field name
     }
 
 
