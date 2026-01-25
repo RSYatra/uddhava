@@ -19,16 +19,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes import (
-    centers,
-    country_codes,
-    devotee_auth,
-    devotees,
+    auth,
     health,
-    payment_options,
-    room_categories,
-    spiritual_masters,
-    yatra_registrations,
-    yatras,
 )
 from app.core.auth_middleware import (
     AuthSecurityMiddleware,
@@ -322,22 +314,8 @@ def register_routes(app: FastAPI) -> None:
     # Health checks (no authentication required)
     app.include_router(health.router, prefix="/api/v1")
 
-    # Devotee authentication routes (new unified auth system)
-    app.include_router(devotee_auth.router, prefix="/api/v1")
-
-    # Devotee routes (enhanced user management)
-    app.include_router(devotees.router, prefix="/api/v1")
-
-    # Reference data routes (authenticated read-only)
-    app.include_router(centers.router, prefix="/api/v1")
-    app.include_router(country_codes.router, prefix="/api/v1")
-    app.include_router(spiritual_masters.router, prefix="/api/v1")
-
-    # Yatra management routes
-    app.include_router(yatras.router, prefix="/api/v1")
-    app.include_router(room_categories.router, prefix="/api/v1")
-    app.include_router(payment_options.router, prefix="/api/v1")
-    app.include_router(yatra_registrations.router, prefix="/api/v1")
+    # Authentication routes
+    app.include_router(auth.router, prefix="/api/v1")
 
     # Root endpoint - Landing page
     @app.get("/", tags=["Root"], include_in_schema=False)
@@ -362,7 +340,7 @@ def register_routes(app: FastAPI) -> None:
             "app_name": settings.app_name,
             "version": settings.app_version,
             "environment": settings.environment.title(),
-            "description": "Radha Shyam Sundar Yatra Management System",
+            "description": "RSYatra Authentication API",
             "show_docs": not settings.is_production,
         }
 
@@ -377,10 +355,10 @@ def register_routes(app: FastAPI) -> None:
             "version": settings.app_version,
             "environment": settings.environment,
             "status": "running",
-            "description": "Radha Shyam Sundar Yatra Management API",
+            "description": "RSYatra Authentication API",
             "endpoints": {
                 "health": "/api/v1/health",
-                "devotees": "/api/v1/devotees/",  # Enhanced devotee management
+                "auth": "/api/v1/auth",
                 "docs": "/docs" if not settings.is_production else None,
                 "redoc": "/redoc" if not settings.is_production else None,
             },

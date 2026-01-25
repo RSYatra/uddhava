@@ -1,3 +1,0 @@
-"""Archived migration: baseline"""
-
-# archived

@@ -124,22 +124,15 @@ class Settings(BaseSettings):
     # Security
     debug_db_token: str | None = None
 
-    # Email Configuration (Gmail API with OAuth2)
-    # With token.json present: Real emails sent via Gmail API (dev and prod)
-    # Without token.json: Emails logged to console (dev only, production fails)
-    gmail_credentials_file: str = "token.json"  # OAuth2 credentials (token.json or token.pickle)
-    gmail_from_email: str = "test@example.com"  # Gmail sender address
-    gmail_from_name: str = "Radha Shyam Sundar Seva"  # Display name in emails
-
-    # Password Reset
-    password_reset_token_expire_hours: int = 1
-    password_reset_url_base: str = "https://rsyatra.com/reset-password"
-
-    # Email Verification
-    email_verification_token_expire_hours: int = 24
-    email_verification_url_base: str = "https://rsyatra.com/verify-email"
+    # SMTP Configuration (Hostinger)
+    SMTP_HOST: str = "smtp.hostinger.com"
+    SMTP_PORT: int = 587  # TLS/STARTTLS port
+    SMTP_USER: str = "info@rsyatra.com"
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "info@rsyatra.com"
 
     # Frontend URLs
+    FRONTEND_URL: str = "http://localhost:5173"  # Development Vite frontend
     frontend_login_url: str = "https://rsyatra.com/login"
     frontend_base_url: str = "https://rsyatra.com"
 
