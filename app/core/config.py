@@ -10,7 +10,7 @@ import warnings
 from functools import lru_cache
 from urllib.parse import quote_plus
 
-from pydantic import field_validator
+from pydantic import field_validator, Field
 from pydantic_settings import BaseSettings
 
 
@@ -88,19 +88,25 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 20  # Total size limit per user
     max_file_size_mb: int = 10  # Individual file size limit
     max_files_per_user: int = 5  # Maximum number of files per user
-    allowed_image_extensions: list = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+    allowed_image_extensions: list = Field(
+        default=[".jpg", ".jpeg", ".png", ".gif", ".webp"],
+        json_schema_extra={"from_attributes": True}
+    )
     # Documents can be PDFs, Office docs, text files, or images (for scanned documents)
-    allowed_document_extensions: list = [
-        ".pdf",
-        ".doc",
-        ".docx",
-        ".txt",
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".gif",
-        ".webp",
-    ]
+    allowed_document_extensions: list = Field(
+        default=[
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".txt",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".webp",
+        ],
+        json_schema_extra={"from_attributes": True}
+    )
 
     # Google Cloud Storage Configuration
     gcs_bucket_name: str = "uddhava-user-files"
