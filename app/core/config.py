@@ -115,7 +115,6 @@ class Settings(BaseSettings):
         "https://www.rsyatra.com",  # Production frontend with www (custom domain)
         "https://rsyatra.onrender.com",  # Production frontend (Render subdomain - legacy)
         "https://dev-rsyatra.onrender.com",  # Development frontend (Render subdomain)
-        "http://localhost:1728",  # Local frontend for development
         "http://localhost:5173",  # Vite frontend default port
         "http://localhost:5174",  # Vite frontend (when 5173 is in use)
         "http://localhost:8000",  # Backend testing
