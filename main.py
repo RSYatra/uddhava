@@ -125,27 +125,8 @@ def create_application() -> FastAPI:
 def setup_middleware(app: FastAPI) -> None:
     """Configure application middleware."""
 
-    # Custom middleware (order matters - added first, executed last)
-    if not settings.is_production:
-        # Rate limiting in development for testing
-        app.add_middleware(RateLimitMiddleware, calls=1000, period=60)
-
-    # Auth-specific security middleware
-    app.add_middleware(AuthSecurityMiddleware)
-
-    # Content Security Policy middleware
-    app.add_middleware(ContentSecurityPolicyMiddleware)
-
-    # Enhanced request logging middleware
-    app.add_middleware(RequestLoggingMiddleware)
-
-    # Security headers
-    app.add_middleware(SecurityHeadersMiddleware)
-
-    # Request logging
-    app.add_middleware(LoggingMiddleware)
-
-    # CORS middleware
+    # CORS middleware - MUST be added first so it handles preflight OPTIONS requests
+    # before other middleware can reject them
     # Note: Cannot use "*" with allow_credentials=True (CORS specification)
     # Instead, explicitly list allowed origins
     allowed_origins: list = [
@@ -168,6 +149,26 @@ def setup_middleware(app: FastAPI) -> None:
         max_age=3600,  # Cache preflight requests for 1 hour
     )
 
+    # Custom middleware (order matters - added first, executed last)
+    if not settings.is_production:
+        # Rate limiting in development for testing
+        app.add_middleware(RateLimitMiddleware, calls=1000, period=60)
+
+    # Auth-specific security middleware
+    app.add_middleware(AuthSecurityMiddleware)
+
+    # Content Security Policy middleware
+    app.add_middleware(ContentSecurityPolicyMiddleware)
+
+    # Enhanced request logging middleware
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # Security headers
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # Request logging
+    app.add_middleware(LoggingMiddleware)
+
     # Trusted host middleware for production
     if settings.is_production:
         app.add_middleware(
@@ -179,6 +180,7 @@ def setup_middleware(app: FastAPI) -> None:
                 "rsyatra.com",
                 "*.rsyatra.com",
                 "*.onrender.com",
+                "http://localhost:5173"
             ]
             + ([settings.app_host] if hasattr(settings, "app_host") else []),
         )
