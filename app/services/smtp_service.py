@@ -103,16 +103,16 @@ class SMTPService:
                 <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
                     <h2>Welcome to RSYatra, {user_name}!</h2>
                     <p>Thank you for signing up. Please verify your email address to activate your account.</p>
-                    
+
                     <div style="margin: 30px 0;">
                         <a href="{verification_url}" style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
                             Verify Email
                         </a>
                     </div>
-                    
+
                     <p>Or copy and paste this link in your browser:</p>
                     <p style="word-break: break-all; color: #0066cc;">{verification_url}</p>
-                    
+
                     <p style="margin-top: 40px; color: #666; font-size: 12px;">
                         This link expires in 24 hours. If you didn't create this account, please ignore this email.
                     </p>
@@ -163,16 +163,16 @@ class SMTPService:
                     <h2>Password Reset Request</h2>
                     <p>Hi {user_name},</p>
                     <p>We received a request to reset your password. Click the link below to create a new password.</p>
-                    
+
                     <div style="margin: 30px 0;">
                         <a href="{reset_url}" style="background-color: #2196F3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
                             Reset Password
                         </a>
                     </div>
-                    
+
                     <p>Or copy and paste this link in your browser:</p>
                     <p style="word-break: break-all; color: #0066cc;">{reset_url}</p>
-                    
+
                     <p style="margin-top: 40px; color: #666; font-size: 12px;">
                         This link expires in 1 hour. If you didn't request this, please ignore this email.
                     </p>
