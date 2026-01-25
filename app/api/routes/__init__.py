@@ -1,32 +1,5 @@
-"""
-API routes package initialization.
+"""Minimal API routes package: only health is active."""
 
-This package contains all API route modules organized by functionality.
-"""
+from . import health
 
-# Import all route modules for easy access
-from . import (
-    centers,
-    country_codes,
-    devotee_auth,
-    devotees,
-    health,
-    payment_options,
-    room_categories,
-    spiritual_masters,
-    yatra_registrations,
-    yatras,
-)
-
-__all__ = [
-    "centers",
-    "country_codes",
-    "devotee_auth",
-    "devotees",
-    "health",
-    "payment_options",
-    "room_categories",
-    "spiritual_masters",
-    "yatra_registrations",
-    "yatras",
-]
+__all__ = ["health"]
