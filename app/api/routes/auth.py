@@ -140,7 +140,7 @@ def _generate_secure_token() -> str:
 def _validate_password_strength(password: str) -> tuple[bool, str | None]:
     """
     Validate password strength.
-    
+
     Returns: (is_valid, error_message)
     """
     if len(password) < 8 or len(password) > 128:

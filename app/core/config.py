@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 20  # Total size limit per user
     max_file_size_mb: int = 10  # Individual file size limit
     max_files_per_user: int = 5  # Maximum number of files per user
-    
+
     # Store as strings to prevent Pydantic Settings from trying to JSON parse
     # Use the properties below to get them as lists
     allowed_image_extensions_str: str = Field(
