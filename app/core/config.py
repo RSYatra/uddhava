@@ -5,6 +5,7 @@ This module handles all configuration loading from environment variables,
 provides validation, and sets up proper defaults for different environments.
 """
 
+import json
 import warnings
 from functools import lru_cache
 from urllib.parse import quote_plus
@@ -62,6 +63,26 @@ class Settings(BaseSettings):
         if v == "" or v is None:
             return None
         return int(v)
+
+    @field_validator("allowed_image_extensions", "allowed_document_extensions", mode="before")
+    @classmethod
+    def parse_list_fields(cls, v):
+        """Parse list fields from JSON or comma-separated strings."""
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                # Return default based on field name
+                if "image" in cls.__annotations__.get("allowed_image_extensions", ""):
+                    return [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+                else:
+                    return [".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp"]
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [x.strip() for x in v.split(',') if x.strip()]
+        return v
 
     # File Upload Configuration
     max_upload_size_mb: int = 20  # Total size limit per user
