@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     @field_validator("allowed_image_extensions", "allowed_document_extensions", mode="before")
     @classmethod
-    def parse_list_fields(cls, v):
+    def parse_list_fields(cls, v, info):
         """Parse list fields from JSON or comma-separated strings."""
         if isinstance(v, list):
             return v
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
             v = v.strip()
             if not v:
                 # Return default based on field name
-                if "image" in cls.__annotations__.get("allowed_image_extensions", ""):
+                if info.field_name == "allowed_image_extensions":
                     return [".jpg", ".jpeg", ".png", ".gif", ".webp"]
                 else:
                     return [".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp"]
